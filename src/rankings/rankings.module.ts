@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ApiKeyGuard } from './api-key.guard';
 import { JjwxcProvider } from './providers/jjwxc.provider';
 import { QidianProvider } from './providers/qidian.provider';
+import { RankingHttpClient } from './providers/ranking-http.client';
 import { RankingsController } from './rankings.controller';
 import { RankingsService, RANKING_PROVIDERS } from './rankings.service';
 import { RefreshScheduler } from './refresh.scheduler';
@@ -12,8 +13,9 @@ import { SnapshotStoreService } from './snapshot-store.service';
   providers: [
     ApiKeyGuard,
     SnapshotStoreService,
-    { provide: QidianProvider, useFactory: () => new QidianProvider() },
-    { provide: JjwxcProvider, useFactory: () => new JjwxcProvider() },
+    RankingHttpClient,
+    QidianProvider,
+    JjwxcProvider,
     {
       provide: RANKING_PROVIDERS,
       inject: [QidianProvider, JjwxcProvider],
