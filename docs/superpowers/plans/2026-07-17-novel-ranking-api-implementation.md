@@ -138,7 +138,7 @@ export interface RankingSnapshot {
 - 创建：`src/rankings/providers/qidian.provider.spec.ts`
 - 创建：`test/fixtures/qidian-hotsales.html`
 
-- [ ] **步骤 1：编写 SSR 解析失败测试**
+- [x] **步骤 1：编写 SSR 解析失败测试**
 
 ```ts
 it('normalizes SSR page records', async () => {
@@ -150,13 +150,13 @@ it('normalizes SSR page records', async () => {
 });
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`npm test -- qidian.provider.spec.ts`
 
 预期：失败，原因是 `QidianProvider` 不存在。
 
-- [ ] **步骤 3：实现 URL 映射、请求和解析**
+- [x] **步骤 3：实现 URL 映射、请求和解析**
 
 实现允许的映射：`hotsales` -> `/rank/hotsales/`、`yuepiao` -> `/rank/yuepiao/`、`newbook` -> `/rank/newbook/`、`newauthor` -> `/rank/newauthor/`、`recom` -> `/rank/rec/`、`readindex` -> `/rank/readindex/`、`sanjiang` -> `/sanjiang/`。
 
@@ -169,13 +169,13 @@ if (!Array.isArray(records)) throw new SourceParseError('起点 SSR 未包含榜
 
 将 `bName`、`bid`、`bAuth`、`cat`、`subCat`、`desc`、`cnt`、`rankCnt` 映射到统一模型，并使用 `m.qidian.com/book/{bid}/` 生成作品链接。
 
-- [ ] **步骤 4：运行起点测试**
+- [x] **步骤 4：运行起点测试**
 
 运行：`npm test -- qidian.provider.spec.ts`
 
 预期：通过 URL 映射、正常解析和无 SSR 数据失败测试。
 
-- [ ] **步骤 5：提交起点适配器**
+- [x] **步骤 5：提交起点适配器**
 
 运行：`git add src/rankings/providers/qidian.provider* test/fixtures/qidian-hotsales.html && git commit -m "feat: add Qidian ranking provider"`
 
