@@ -52,6 +52,7 @@ describe('RankingHttpClient', () => {
     );
     const client = new RankingHttpClient();
 
+    await expect(client.get(url)).rejects.toBeInstanceOf(HttpRequestError);
     await expect(client.get(url)).rejects.toMatchObject({
       name: 'HttpRequestError',
       status: 503,
