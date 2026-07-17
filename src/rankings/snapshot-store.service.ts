@@ -1,14 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RankingKey, RankingSnapshot } from './domain/ranking.types';
 
+export const SNAPSHOT_DIR = Symbol('SNAPSHOT_DIR');
+
 @Injectable()
 export class SnapshotStoreService {
   constructor(
-    private readonly snapshotDir =
-      process.env.SNAPSHOT_DIR ?? join(process.cwd(), 'data', 'snapshots'),
-  ) {}
+    @Optional() @Inject(SNAPSHOT_DIR) snapshotDir?: string,
+  ) {
+    this.snapshotDir =
+      snapshotDir ?? process.env.SNAPSHOT_DIR ?? join(process.cwd(), 'data', 'snapshots');
+  }
+
+  private readonly snapshotDir: string;
 
   async read(key: RankingKey): Promise<RankingSnapshot | undefined> {
     try {

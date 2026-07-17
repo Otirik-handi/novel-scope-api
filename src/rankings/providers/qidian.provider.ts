@@ -56,7 +56,12 @@ export class QidianProvider implements RankingProvider {
     }
 
     try {
-      const records = JSON.parse(match[1]).pageContext?.pageContext?.pageProps?.pageData
+      const pageContext = match[1];
+      if (!pageContext) {
+        throw new SourceParseError('Qidian pageContext is empty');
+      }
+
+      const records = JSON.parse(pageContext).pageContext?.pageContext?.pageProps?.pageData
         ?.records;
       if (!Array.isArray(records)) {
         throw new SourceParseError('Qidian SSR does not contain ranking records');

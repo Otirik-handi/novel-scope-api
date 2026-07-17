@@ -237,7 +237,7 @@ const detailUrl = `https://www.jjwxc.net/onebook.php?novelid=${novelId}`;
 - 创建：`src/rankings/rankings.service.spec.ts`
 - 创建：`test/rankings.e2e-spec.ts`
 
-- [ ] **步骤 1：编写控制器和陈旧回退失败测试**
+- [x] **步骤 1：编写控制器和陈旧回退失败测试**
 
 ```ts
 await request(app.getHttpServer())
@@ -251,13 +251,13 @@ await request(app.getHttpServer())
   .expect(401);
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`npm test -- rankings.service.spec.ts && npm test -- rankings.e2e-spec.ts`
 
 预期：失败，原因是应用服务、控制器和鉴权守卫不存在。
 
-- [ ] **步骤 3：实现协调和 HTTP 映射**
+- [x] **步骤 3：实现协调和 HTTP 映射**
 
 `RankingsService.get` 从内存缓存或快照文件读取数据；没有快照时抛出 `SnapshotUnavailableError` 并映射为 `503`。`refresh` 调用对应 provider，成功后写入缓存和文件；失败时读取旧快照，将其复制为 `status: 'stale'` 并追加 `lastError`。
 
@@ -276,13 +276,13 @@ refresh(@Body() body: RefreshRankingDto): Promise<RankingSnapshot> {
 
 `ApiKeyGuard` 仅在 `request.header('x-api-key') === process.env.API_KEY` 且 `API_KEY` 非空时放行。DTO 允许的平台仅为 `qidian`、`jjwxc`，并验证 `rank` 为非空字符串、`channel` 为可选字符串。
 
-- [ ] **步骤 4：运行服务与 HTTP 测试**
+- [x] **步骤 4：运行服务与 HTTP 测试**
 
 运行：`npm test -- rankings.service.spec.ts && npm test -- rankings.e2e-spec.ts`
 
 预期：通过 `200`、`400`、`401`、`404`、`503` 和陈旧回退情形。
 
-- [ ] **步骤 5：提交 API 层**
+- [x] **步骤 5：提交 API 层**
 
 运行：`git add src/rankings test/rankings.e2e-spec.ts && git commit -m "feat: expose ranking API"`
 

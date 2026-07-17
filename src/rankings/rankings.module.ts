@@ -1,0 +1,25 @@
+import { Module } from '@nestjs/common';
+import { ApiKeyGuard } from './api-key.guard';
+import { JjwxcProvider } from './providers/jjwxc.provider';
+import { QidianProvider } from './providers/qidian.provider';
+import { RankingsController } from './rankings.controller';
+import { RankingsService, RANKING_PROVIDERS } from './rankings.service';
+import { SnapshotStoreService } from './snapshot-store.service';
+
+@Module({
+  controllers: [RankingsController],
+  providers: [
+    ApiKeyGuard,
+    SnapshotStoreService,
+    { provide: QidianProvider, useFactory: () => new QidianProvider() },
+    { provide: JjwxcProvider, useFactory: () => new JjwxcProvider() },
+    {
+      provide: RANKING_PROVIDERS,
+      inject: [QidianProvider, JjwxcProvider],
+      useFactory: (qidian: QidianProvider, jjwxc: JjwxcProvider) => [qidian, jjwxc],
+    },
+    RankingsService,
+  ],
+  exports: [RankingsService, SnapshotStoreService],
+})
+export class RankingsModule {}
