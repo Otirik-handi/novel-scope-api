@@ -10,12 +10,12 @@ describe('QidianProvider', () => {
       join(process.cwd(), 'test', 'fixtures', 'qidian-hotsales.html'),
       'utf8',
     );
-    const request = jest.fn().mockResolvedValue(new Response(html));
+    const request = { get: jest.fn().mockResolvedValue(Buffer.from(html)) };
     const provider = new QidianProvider(request);
 
     const snapshot = await provider.fetch(key);
 
-    expect(request).toHaveBeenCalledWith('https://m.qidian.com/rank/hotsales/');
+    expect(request.get).toHaveBeenCalledWith('https://m.qidian.com/rank/hotsales/');
     expect(snapshot.items[0]).toMatchObject({
       rank: 1,
       bookId: '123',
@@ -29,19 +29,19 @@ describe('QidianProvider', () => {
 
   it('rejects pages without SSR ranking data', async () => {
     const provider = new QidianProvider(
-      jest.fn().mockResolvedValue(new Response('<html></html>')),
+      { get: jest.fn().mockResolvedValue(Buffer.from('<html></html>')) },
     );
 
     await expect(provider.fetch(key)).rejects.toBeInstanceOf(SourceParseError);
   });
 
   it('rejects unsupported ranks before requesting a page', async () => {
-    const request = jest.fn();
+    const request = { get: jest.fn() };
     const provider = new QidianProvider(request);
 
     await expect(provider.fetch({ ...key, rank: 'unknown' })).rejects.toThrow(
       'Unsupported Qidian rank',
     );
-    expect(request).not.toHaveBeenCalled();
+    expect(request.get).not.toHaveBeenCalled();
   });
 });
