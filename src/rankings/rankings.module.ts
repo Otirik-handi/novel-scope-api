@@ -4,6 +4,7 @@ import { JjwxcProvider } from './providers/jjwxc.provider';
 import { QidianProvider } from './providers/qidian.provider';
 import { RankingsController } from './rankings.controller';
 import { RankingsService, RANKING_PROVIDERS } from './rankings.service';
+import { RefreshScheduler } from './refresh.scheduler';
 import { SnapshotStoreService } from './snapshot-store.service';
 
 @Module({
@@ -19,6 +20,7 @@ import { SnapshotStoreService } from './snapshot-store.service';
       useFactory: (qidian: QidianProvider, jjwxc: JjwxcProvider) => [qidian, jjwxc],
     },
     RankingsService,
+    RefreshScheduler,
   ],
   exports: [RankingsService, SnapshotStoreService],
 })

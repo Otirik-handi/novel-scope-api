@@ -294,7 +294,7 @@ refresh(@Body() body: RefreshRankingDto): Promise<RankingSnapshot> {
 - 修改：`src/app.module.ts`、`src/rankings/rankings.module.ts`
 - 创建：`src/rankings/refresh.scheduler.spec.ts`
 
-- [ ] **步骤 1：编写调度器失败测试**
+- [x] **步骤 1：编写调度器失败测试**
 
 ```ts
 it('refreshes configured rankings once per scheduled run', async () => {
@@ -304,13 +304,13 @@ it('refreshes configured rankings once per scheduled run', async () => {
 });
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`npm test -- refresh.scheduler.spec.ts`
 
 预期：失败，原因是调度器不存在。
 
-- [ ] **步骤 3：实现六小时调度与文档**
+- [x] **步骤 3：实现六小时调度与文档**
 
 ```ts
 @Cron(CronExpression.EVERY_6_HOURS)
@@ -324,12 +324,12 @@ async refreshConfiguredRankings(): Promise<void> {
 
 在 `AppModule` 导入 `ScheduleModule.forRoot()`。README 必须说明 Node 版本、`npm install`、`API_KEY`、`SNAPSHOT_DIR`、启动命令、示例查询、手动刷新请求，以及数据不是实时或官方公开 API 的限制。
 
-- [ ] **步骤 4：运行全部验证**
+- [x] **步骤 4：运行全部验证**
 
 运行：`npm run lint && npm test && npm run build`
 
 预期：三个命令均以退出码 `0` 完成。
 
-- [ ] **步骤 5：提交调度器和文档**
+- [x] **步骤 5：提交调度器和文档**
 
 运行：`git add src README.md package.json && git commit -m "feat: schedule ranking refreshes"`
