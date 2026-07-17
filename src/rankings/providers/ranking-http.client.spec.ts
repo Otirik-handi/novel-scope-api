@@ -32,16 +32,6 @@ describe('RankingHttpClient', () => {
   it.each([
     ['a timeout', new AxiosError('timeout', 'ECONNABORTED')],
     ['a network failure', new AxiosError('network failure', 'ERR_NETWORK')],
-    [
-      'an HTTP failure',
-      new AxiosError(
-        'service unavailable',
-        undefined,
-        undefined,
-        undefined,
-        { status: 503 } as AxiosResponse,
-      ),
-    ],
   ])('normalizes %s with the request URL', async (_scenario, axiosError) => {
     axiosInstance.get.mockRejectedValue(axiosError);
     const client = new RankingHttpClient();
@@ -50,7 +40,7 @@ describe('RankingHttpClient', () => {
     await expect(client.get(url)).rejects.toThrow(url);
   });
 
-  it('includes HTTP status in a normalized HTTP failure', async () => {
+  it('preserves HTTP status in a normalized HTTP failure', async () => {
     axiosInstance.get.mockRejectedValue(
       new AxiosError(
         'service unavailable',
@@ -62,7 +52,11 @@ describe('RankingHttpClient', () => {
     );
     const client = new RankingHttpClient();
 
-    await expect(client.get(url)).rejects.toThrow('503');
+    await expect(client.get(url)).rejects.toMatchObject({
+      name: 'HttpRequestError',
+      status: 503,
+      message: expect.stringContaining(url),
+    });
   });
 
   it('exports a ten-second browser-like Axios configuration', () => {
