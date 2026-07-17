@@ -186,7 +186,7 @@ if (!Array.isArray(records)) throw new SourceParseError('起点 SSR 未包含榜
 - 创建：`src/rankings/providers/jjwxc.provider.spec.ts`
 - 创建：`test/fixtures/jjwxc-topten.html`、`test/fixtures/jjwxc-onebook.html`
 
-- [ ] **步骤 1：编写榜单和详情合并失败测试**
+- [x] **步骤 1：编写榜单和详情合并失败测试**
 
 ```ts
 it('combines rank entries with GB18030 detail metrics', async () => {
@@ -198,13 +198,13 @@ it('combines rank entries with GB18030 detail metrics', async () => {
 });
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`npm test -- jjwxc.provider.spec.ts`
 
 预期：失败，原因是 `JjwxcProvider` 不存在。
 
-- [ ] **步骤 3：实现榜单参数、编码和详情解析**
+- [x] **步骤 3：实现榜单参数、编码和详情解析**
 
 实现 `income` -> `12`、`monthly` -> `7`、`quarterly` -> `8`、`completed` -> `14`、`newcomer` -> `15`、`thousandWords` -> `17`。请求 URL 必须为：
 
@@ -215,13 +215,13 @@ const detailUrl = `https://www.jjwxc.net/onebook.php?novelid=${novelId}`;
 
 使用 `iconv-lite` 解码详情页字节为 `gb18030`。通过 Cheerio 读取带 `itemprop` 的 `collectedCount`、`nutritionCount`、`scoreCount`、`reviewCount`、`wordCount`、`updataStatus`；缺失详情字段保留为 `null`，单本详情失败不得中断整个榜单。
 
-- [ ] **步骤 4：运行晋江测试**
+- [x] **步骤 4：运行晋江测试**
 
 运行：`npm test -- jjwxc.provider.spec.ts`
 
 预期：通过 URL、详情指标、详情失败降级和不受支持榜单测试。
 
-- [ ] **步骤 5：提交晋江适配器**
+- [x] **步骤 5：提交晋江适配器**
 
 运行：`git add src/rankings/providers/jjwxc.provider* test/fixtures/jjwxc-* && git commit -m "feat: add Jinjiang ranking provider"`
 
