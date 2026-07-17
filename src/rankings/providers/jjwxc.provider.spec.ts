@@ -11,9 +11,9 @@ describe('JjwxcProvider', () => {
     const detailHtml = await fixture('jjwxc-onebook.html');
     const request = jest
       .fn()
-      .mockResolvedValueOnce(new Response(rankHtml))
-      .mockResolvedValueOnce(new Response(iconv.encode(detailHtml, 'gb18030')));
-    const provider = new JjwxcProvider(request);
+      .mockResolvedValueOnce(Buffer.from(rankHtml))
+      .mockResolvedValueOnce(iconv.encode(detailHtml, 'gb18030'));
+    const provider = new JjwxcProvider({ get: request });
 
     const snapshot = await provider.fetch(key);
 
@@ -39,9 +39,9 @@ describe('JjwxcProvider', () => {
   it('keeps ranking entries when a detail request fails', async () => {
     const request = jest
       .fn()
-      .mockResolvedValueOnce(new Response(await fixture('jjwxc-topten.html')))
+      .mockResolvedValueOnce(Buffer.from(await fixture('jjwxc-topten.html')))
       .mockRejectedValueOnce(new Error('network failed'));
-    const provider = new JjwxcProvider(request);
+    const provider = new JjwxcProvider({ get: request });
 
     const snapshot = await provider.fetch(key);
 
@@ -52,7 +52,7 @@ describe('JjwxcProvider', () => {
 
   it('rejects unsupported ranks before requesting a page', async () => {
     const request = jest.fn();
-    const provider = new JjwxcProvider(request);
+    const provider = new JjwxcProvider({ get: request });
 
     await expect(provider.fetch({ ...key, rank: 'unknown' })).rejects.toThrow(
       'Unsupported JJWXC rank',

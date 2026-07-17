@@ -1,9 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { RankingProvider } from '../domain/ranking-provider';
 import { RankingItem, RankingKey, RankingSnapshot } from '../domain/ranking.types';
-
-type HttpResponse = { ok: boolean; text(): Promise<string> };
-type HttpRequest = (url: string) => Promise<HttpResponse>;
+import { RankingHttpClient } from './ranking-http.client';
 
 const rankPaths: Record<string, string> = {
   hotsales: '/rank/hotsales/',
@@ -21,7 +19,7 @@ export class SourceParseError extends Error {}
 export class QidianProvider implements RankingProvider {
   readonly platform = 'qidian' as const;
 
-  constructor(private readonly request: HttpRequest = (url) => fetch(url)) {}
+  constructor(@Inject(RankingHttpClient) private readonly http: Pick<RankingHttpClient, 'get'>) {}
 
   async fetch(key: RankingKey): Promise<RankingSnapshot> {
     const path = rankPaths[key.rank];
@@ -30,12 +28,7 @@ export class QidianProvider implements RankingProvider {
     }
 
     const sourceUrl = `https://m.qidian.com${path}`;
-    const response = await this.request(sourceUrl);
-    if (!response.ok) {
-      throw new Error(`Qidian request failed for ${sourceUrl}`);
-    }
-
-    const html = await response.text();
+    const html = (await this.http.get(sourceUrl)).toString('utf8');
     const records = this.parseRecords(html);
 
     return {

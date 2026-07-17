@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
 import { RankingProvider } from '../domain/ranking-provider';
 import { RankingItem, RankingKey, RankingSnapshot } from '../domain/ranking.types';
+import { RankingHttpClient } from './ranking-http.client';
 
 const orderStrings: Record<string, string> = {
   income: '12',
@@ -17,7 +18,7 @@ const orderStrings: Record<string, string> = {
 export class JjwxcProvider implements RankingProvider {
   readonly platform = 'jjwxc' as const;
 
-  constructor(private readonly request: typeof fetch = fetch) {}
+  constructor(@Inject(RankingHttpClient) private readonly http: Pick<RankingHttpClient, 'get'>) {}
 
   async fetch(key: RankingKey): Promise<RankingSnapshot> {
     const orderstr = orderStrings[key.rank];
@@ -27,12 +28,7 @@ export class JjwxcProvider implements RankingProvider {
 
     const channel = key.channel ?? '0';
     const sourceUrl = `https://www.jjwxc.net/topten.php?orderstr=${orderstr}&t=${channel}`;
-    const response = await this.request(sourceUrl);
-    if (!response.ok) {
-      throw new Error(`JJWXC request failed for ${sourceUrl}`);
-    }
-
-    const items = this.parseRanking(await response.text());
+    const items = this.parseRanking((await this.http.get(sourceUrl)).toString('utf8'));
     await Promise.all(
       items.map(async (item) => {
         try {
@@ -94,12 +90,7 @@ export class JjwxcProvider implements RankingProvider {
     item: RankingItem,
   ): Promise<Pick<RankingItem, 'metrics' | 'status' | 'wordCount'>> {
     const detailUrl = `https://www.jjwxc.net/onebook.php?novelid=${item.bookId}`;
-    const response = await this.request(detailUrl);
-    if (!response.ok) {
-      throw new Error(`JJWXC detail request failed for ${detailUrl}`);
-    }
-
-    const html = iconv.decode(Buffer.from(await response.arrayBuffer()), 'gb18030');
+    const html = iconv.decode(await this.http.get(detailUrl), 'gb18030');
     const $ = cheerio.load(html);
     const metricNames = ['collectedCount', 'nutritionCount', 'scoreCount', 'reviewCount'];
     const metrics: Record<string, string | number> = {};
