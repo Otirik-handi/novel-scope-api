@@ -31,7 +31,7 @@
 - 创建：`src/main.ts`、`src/app.module.ts`、`src/health.controller.ts`
 - 创建：`test/health.e2e-spec.ts`
 
-- [ ] **步骤 1：编写健康检查失败测试**
+- [x] **步骤 1：编写健康检查失败测试**
 
 ```ts
 describe('GET /health', () => {
@@ -44,13 +44,13 @@ describe('GET /health', () => {
 });
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`npm test -- health.e2e-spec.ts`
 
 预期：失败，原因是 NestJS 应用尚未创建。
 
-- [ ] **步骤 3：创建最小启动和健康检查实现**
+- [x] **步骤 3：创建最小启动和健康检查实现**
 
 ```ts
 @Controller('health')
@@ -67,13 +67,13 @@ export class AppModule {}
 
 `main.ts` 必须创建应用并启用 `ValidationPipe({ transform: true, whitelist: true })`。
 
-- [ ] **步骤 4：运行健康检查测试**
+- [x] **步骤 4：运行健康检查测试**
 
 运行：`npm test -- health.e2e-spec.ts`
 
 预期：通过 1 个测试。
 
-- [ ] **步骤 5：提交基础项目**
+- [x] **步骤 5：提交基础项目**
 
 运行：`git add package.json tsconfig.json nest-cli.json .env.example .gitignore src test && git commit -m "chore: bootstrap NestJS ranking API"`
 
