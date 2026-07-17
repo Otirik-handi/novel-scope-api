@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { RankingProvider } from '../domain/ranking-provider';
 import { RankingItem, RankingKey, RankingSnapshot } from '../domain/ranking.types';
 import { RankingHttpClient } from './ranking-http.client';
@@ -19,7 +19,7 @@ export class SourceParseError extends Error {}
 export class QidianProvider implements RankingProvider {
   readonly platform = 'qidian' as const;
 
-  constructor(private readonly http: Pick<RankingHttpClient, 'get'>) {}
+  constructor(@Inject(RankingHttpClient) private readonly http: Pick<RankingHttpClient, 'get'>) {}
 
   async fetch(key: RankingKey): Promise<RankingSnapshot> {
     const path = rankPaths[key.rank];

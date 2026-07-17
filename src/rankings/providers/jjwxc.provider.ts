@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
 import { RankingProvider } from '../domain/ranking-provider';
@@ -18,7 +18,7 @@ const orderStrings: Record<string, string> = {
 export class JjwxcProvider implements RankingProvider {
   readonly platform = 'jjwxc' as const;
 
-  constructor(private readonly http: Pick<RankingHttpClient, 'get'>) {}
+  constructor(@Inject(RankingHttpClient) private readonly http: Pick<RankingHttpClient, 'get'>) {}
 
   async fetch(key: RankingKey): Promise<RankingSnapshot> {
     const orderstr = orderStrings[key.rank];
