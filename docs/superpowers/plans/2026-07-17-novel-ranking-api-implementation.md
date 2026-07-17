@@ -85,7 +85,7 @@ export class AppModule {}
 - 创建：`src/rankings/snapshot-store.service.ts`
 - 创建：`src/rankings/snapshot-store.service.spec.ts`
 
-- [ ] **步骤 1：编写快照往返读写失败测试**
+- [x] **步骤 1：编写快照往返读写失败测试**
 
 ```ts
 const snapshot: RankingSnapshot = {
@@ -98,13 +98,13 @@ await expect(store.read({ platform: 'qidian', rank: 'hotsales', channel: null })
   .resolves.toEqual(snapshot);
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [x] **步骤 2：运行测试确认失败**
 
 运行：`npm test -- snapshot-store.service.spec.ts`
 
 预期：失败，原因是快照类型和存储服务不存在。
 
-- [ ] **步骤 3：定义类型并实现原子写入**
+- [x] **步骤 3：定义类型并实现原子写入**
 
 ```ts
 export interface RankingItem {
@@ -121,13 +121,13 @@ export interface RankingSnapshot {
 
 `SnapshotStoreService.write` 必须先写入同目录的 `.tmp` 文件，再用 `rename` 替换 `data/snapshots/{platform}--{rank}--{channel-or-default}.json`。
 
-- [ ] **步骤 4：运行存储测试**
+- [x] **步骤 4：运行存储测试**
 
 运行：`npm test -- snapshot-store.service.spec.ts`
 
 预期：通过读写和缺失快照测试。
 
-- [ ] **步骤 5：提交领域与存储层**
+- [x] **步骤 5：提交领域与存储层**
 
 运行：`git add src/rankings/domain src/rankings/snapshot-store.service* && git commit -m "feat: add ranking snapshots"`
 
