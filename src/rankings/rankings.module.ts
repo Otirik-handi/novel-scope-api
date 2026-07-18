@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common';
 import { Pool } from 'pg';
 import { ApiKeyGuard } from './api-key.guard';
 import { BookDetailStoreService } from './book-detail-store.service';
-import { BOOK_DETAILS_CLOCK, BookDetailsService } from './book-details.service';
+import { PostgresBookDetailLockService, BOOK_DETAIL_LOCK, BOOK_DETAIL_LOCK_POOL } from './book-detail-lock.service';
+import { BOOK_DETAIL_CRAWL_LOGGER, BOOK_DETAILS_CLOCK, BookDetailsService } from './book-details.service';
 import { BooksController } from './books.controller';
 import { JjwxcProvider } from './providers/jjwxc.provider';
 import { QidianProvider } from './providers/qidian.provider';
@@ -28,7 +29,11 @@ import { appLogger } from '../structured-logger';
     },
     PostgresRankingLockService,
     { provide: RANKING_LOCK, useExisting: PostgresRankingLockService },
+    { provide: BOOK_DETAIL_LOCK_POOL, useFactory: () => new Pool({ connectionString: process.env.DATABASE_URL }) },
+    PostgresBookDetailLockService,
+    { provide: BOOK_DETAIL_LOCK, useExisting: PostgresBookDetailLockService },
     { provide: RANKING_CRAWL_LOGGER, useValue: appLogger },
+    { provide: BOOK_DETAIL_CRAWL_LOGGER, useValue: appLogger },
     BookDetailStoreService,
     RefreshScheduleConfigService,
     RankingHttpClient,
