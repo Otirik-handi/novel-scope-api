@@ -10,7 +10,7 @@ import { Request } from 'express';
 export class ApiKeyGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
-    const apiKey = process.env.API_KEY;
+    const apiKey = process.env.REFRESH_API_KEY;
     if (!apiKey || request.header('x-api-key') !== apiKey) {
       throw new UnauthorizedException();
     }

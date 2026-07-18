@@ -14,7 +14,7 @@ describe('Book details API', () => {
   const details = { get: jest.fn().mockResolvedValue(snapshot), refresh: jest.fn().mockResolvedValue(snapshot) };
 
   beforeAll(async () => {
-    process.env.API_KEY = 'test-key';
+    process.env.REFRESH_API_KEY = 'test-key';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(BookDetailsService).useValue(details).compile();
     app = moduleRef.createNestApplication();
@@ -22,7 +22,7 @@ describe('Book details API', () => {
   });
 
   afterAll(async () => {
-    delete process.env.API_KEY;
+    delete process.env.REFRESH_API_KEY;
     await app.close();
   });
 
