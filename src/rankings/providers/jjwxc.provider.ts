@@ -2,7 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
 import { RankingProvider } from '../domain/ranking-provider';
-import { RankingItem, RankingKey, RankingSnapshot } from '../domain/ranking.types';
+import {
+  RankingItem,
+  RankingKey,
+  RankingSnapshot,
+} from '../domain/ranking.types';
 import { RankingHttpClient } from './ranking-http.client';
 
 const orderStrings: Record<string, string> = {
@@ -18,7 +22,10 @@ const orderStrings: Record<string, string> = {
 export class JjwxcProvider implements RankingProvider {
   readonly platform = 'jjwxc' as const;
 
-  constructor(@Inject(RankingHttpClient) private readonly http: Pick<RankingHttpClient, 'get'>) {}
+  constructor(
+    @Inject(RankingHttpClient)
+    private readonly http: Pick<RankingHttpClient, 'get'>,
+  ) {}
 
   async fetch(key: RankingKey): Promise<RankingSnapshot> {
     const orderstr = orderStrings[key.rank];
@@ -28,7 +35,9 @@ export class JjwxcProvider implements RankingProvider {
 
     const channel = key.channel ?? '0';
     const sourceUrl = `https://www.jjwxc.net/topten.php?orderstr=${orderstr}&t=${channel}`;
-    const items = this.parseRanking((await this.http.get(sourceUrl)).toString('utf8'));
+    const items = this.parseRanking(
+      iconv.decode(await this.http.get(sourceUrl), 'gb18030'),
+    );
     await Promise.all(
       items.map(async (item) => {
         try {
@@ -56,7 +65,9 @@ export class JjwxcProvider implements RankingProvider {
 
     $('a[href*="onebook.php?novelid="]').each((index, element) => {
       const link = $(element).attr('href') ?? '';
-      const bookId = new URL(link, 'https://www.jjwxc.net/').searchParams.get('novelid');
+      const bookId = new URL(link, 'https://www.jjwxc.net/').searchParams.get(
+        'novelid',
+      );
       if (!bookId) {
         return;
       }
@@ -64,7 +75,10 @@ export class JjwxcProvider implements RankingProvider {
       const row = $(element).closest('tr');
       const listedRank = Number(row.attr('data-rank'));
       items.push({
-        rank: Number.isFinite(listedRank) && listedRank > 0 ? listedRank : index + 1,
+        rank:
+          Number.isFinite(listedRank) && listedRank > 0
+            ? listedRank
+            : index + 1,
         bookId,
         title: $(element).text().trim(),
         author: row.find('.author').first().text().trim(),
@@ -92,7 +106,12 @@ export class JjwxcProvider implements RankingProvider {
     const detailUrl = `https://www.jjwxc.net/onebook.php?novelid=${item.bookId}`;
     const html = iconv.decode(await this.http.get(detailUrl), 'gb18030');
     const $ = cheerio.load(html);
-    const metricNames = ['collectedCount', 'nutritionCount', 'scoreCount', 'reviewCount'];
+    const metricNames = [
+      'collectedCount',
+      'nutritionCount',
+      'scoreCount',
+      'reviewCount',
+    ];
     const metrics: Record<string, string | number> = {};
 
     for (const name of metricNames) {
