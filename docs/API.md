@@ -2,7 +2,7 @@
 
 ## 概览
 
-Novel Ranking API 提供起点中文网与晋江文学城的榜单快照查询和刷新能力。查询接口只读取已保存的快照，不会触发采集；刷新接口会访问来源站点并更新快照。
+Novel Ranking API 提供起点中文网与晋江文学城的榜单快照查询和刷新能力。榜单查询接口只读取已保存的快照，不会触发采集；刷新接口会访问来源站点并更新快照。起点作品详情查询在快照缺失或过期时会同步采集来源站点。
 
 默认服务地址为 `http://localhost:3000`。下文示例均以该地址为准。
 
@@ -161,6 +161,43 @@ X-API-Key: <API_KEY>
 | `description` | string \| null | 作品简介；来源不可用时为 `null`。 |
 | `metrics` | object | 站点提供的指标，具体字段因平台而异。 |
 | `url` | string | 作品详情页地址。 |
+
+## 查询起点作品详情
+
+```http
+GET /v1/books/qidian/{bookId}
+```
+
+`bookId` 必须为纯数字。服务会读取独立的作品详情快照；快照缺失或距离 `fetchedAt` 超过 10 分钟时，服务同步采集起点移动端详情页并更新快照。同一书号的并发过期请求会合并为一次采集。
+
+成功响应示例：
+
+```json
+{
+  "bookId": "123456",
+  "title": "示例作品",
+  "author": "示例作者",
+  "genres": ["玄幻", "东方玄幻"],
+  "description": "作品简介",
+  "bookStatus": "连载",
+  "wordCount": 123000,
+  "url": "https://m.qidian.com/book/123456/",
+  "sourceUrl": "https://m.qidian.com/book/123456/",
+  "fetchedAt": "2026-07-18T04:00:00.000Z",
+  "status": "fresh"
+}
+```
+
+`bookStatus` 是起点提供的作品连载状态；`status` 是快照状态，取值为 `fresh` 或 `stale`。采集失败但存在旧快照时，接口返回旧数据并设置 `status: "stale"` 与 `lastError`。不存在旧快照时返回 `502 Bad Gateway`。
+
+## 强制刷新起点作品详情
+
+```http
+POST /v1/admin/books/qidian/{bookId}/refresh
+X-API-Key: <API_KEY>
+```
+
+该接口忽略 10 分钟 TTL 并立即采集，认证与榜单手动刷新接口相同。失败时优先按上述规则返回旧的 `stale` 快照。
 
 ## 常见错误
 
