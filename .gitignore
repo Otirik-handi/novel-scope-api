@@ -3,4 +3,12 @@ node_modules/
 dist/
 data/
 test/
-docs/
+
+# 忽略本地配置文件
+.env
+
+# 忽略Agent相关文件
+AGENTS.md
+CLAUDE.md
+docs/superpowers/
+noval-api.md
