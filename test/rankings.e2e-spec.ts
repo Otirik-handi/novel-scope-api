@@ -6,13 +6,18 @@ import { SnapshotStoreService } from '../src/rankings/snapshot-store.service';
 
 describe('Rankings API', () => {
   let app: INestApplication;
-  let store: SnapshotStoreService;
+  const snapshots = new Map<string, Parameters<SnapshotStoreService['write']>[0]>();
+  const store = {
+    read: jest.fn(async (key) => snapshots.get(`${key.platform}:${key.rank}`)),
+    write: jest.fn(async (snapshot) => { snapshots.set(`${snapshot.platform}:${snapshot.rank}`, snapshot); }),
+    recordFailure: jest.fn(),
+  };
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(SnapshotStoreService).useValue(store).compile();
     app = moduleRef.createNestApplication();
     await app.init();
-    store = app.get(SnapshotStoreService);
     await store.write({
       platform: 'qidian', rank: 'hotsales', channel: null,
       sourceUrl: 'https://example.test', fetchedAt: '2026-07-17T00:00:00.000Z',

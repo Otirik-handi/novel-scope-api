@@ -3,15 +3,8 @@ import { Platform } from './domain/ranking.types';
 export const QIDIAN_RANK_PATHS: Readonly<Record<string, string>> = {
   hotsales: '/rank/hotsales/',
   yuepiao: '/rank/yuepiao/',
-  signnewbook: '/rank/sign/',
-  newsign: '/rank/sign/',
-  newbook: '/rank/newbook/',
-  pubnewbook: '/rank/newbook/',
-  newauthor: '/rank/newauthor/',
   recom: '/rank/rec/',
-  readindex: '/rank/readindex/',
   collect: '/rank/newfans/',
-  sanjiang: '/sanjiang/',
 };
 
 export const JJWXC_ORDER_STRINGS: Readonly<Record<string, string>> = {

@@ -3,7 +3,7 @@ import { redactLogValue } from './request-context';
 
 type LogWriter = (line: string) => void;
 type HttpCompletion = { requestId: string; method: string; path: string; durationMs: number; statusCode: number };
-type CrawlErrorCode = 'UPSTREAM_ERROR' | 'TIMEOUT' | 'NETWORK_ERROR' | 'UNKNOWN_ERROR';
+export type CrawlErrorCode = 'UPSTREAM_ERROR' | 'TIMEOUT' | 'NETWORK_ERROR' | 'UNKNOWN_ERROR';
 type CrawlResult = 'success' | 'failed' | 'skipped';
 type CrawlCompletion = {
   targetType: string; targetKey: string; platform: string; durationMs: number; status: string;
