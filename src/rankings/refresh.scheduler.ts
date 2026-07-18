@@ -2,7 +2,6 @@ import { Inject, Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import { mapWithConcurrency } from './concurrency';
-import { RefreshScheduleConfigService } from './refresh-schedule-config.service';
 import { RankingsService } from './rankings.service';
 
 @Injectable()
@@ -10,14 +9,12 @@ export class RefreshScheduler implements OnApplicationBootstrap {
   constructor(
     @Inject(RankingsService) private readonly rankings: Pick<RankingsService, 'refresh'>,
     @Inject(SchedulerRegistry) private readonly registry: Pick<SchedulerRegistry, 'addCronJob'>,
-    @Inject(RefreshScheduleConfigService)
-    private readonly config: Pick<RefreshScheduleConfigService, 'get'>,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    const config = this.config.get();
     const job = CronJob.from({
-      cronTime: config.cron,
+      cronTime: '0 0 6 * * *',
+      timeZone: 'Asia/Shanghai',
       onTick: () => this.refreshConfiguredRankings(),
       start: false,
       waitForCompletion: true,
@@ -29,8 +26,8 @@ export class RefreshScheduler implements OnApplicationBootstrap {
   }
 
   async refreshConfiguredRankings(): Promise<void> {
-    const config = this.config.get();
-    await mapWithConcurrency(config.targets, config.targetConcurrency, async (target) => {
+    const targets = ['hotsales', 'yuepiao', 'recom', 'collect'].map((rank) => ({ platform: 'qidian' as const, rank, channel: null }));
+    await mapWithConcurrency(targets, 2, async (target) => {
       try {
         await this.rankings.refresh(target);
       } catch {

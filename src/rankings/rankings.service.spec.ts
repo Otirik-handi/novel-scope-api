@@ -34,6 +34,43 @@ describe('RankingsService', () => {
     await expect(service.get(snapshot)).resolves.toEqual(snapshot);
   });
 
+  it('rejects a manual refresh when the upstream crawl fails even with a prior snapshot', async () => {
+    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn(), recordFailure: jest.fn() };
+    const provider: RankingProvider = {
+      platform: 'qidian',
+      fetch: jest.fn().mockRejectedValue(new Error('source unavailable')),
+    };
+    const service = new RankingsService(store, [provider]);
+
+    await expect(service.refreshStrict(snapshot)).rejects.toMatchObject({
+      status: 502,
+      response: expect.objectContaining({ code: 'UPSTREAM_ERROR' }),
+    });
+    expect(store.write).not.toHaveBeenCalled();
+    expect(store.recordFailure).toHaveBeenCalledWith(snapshot, expect.any(Date), expect.any(Error));
+  });
+
+  it('reports a platform target as failed when its strict refresh fails despite a prior snapshot', async () => {
+    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn(), recordFailure: jest.fn() };
+    const provider: RankingProvider = {
+      platform: 'qidian',
+      fetch: jest.fn().mockImplementation((key) => key.rank === 'yuepiao' ? Promise.reject(new Error('source unavailable')) : Promise.resolve({ ...snapshot, rank: key.rank })),
+    };
+    const service = new RankingsService(store, [provider]);
+
+    await expect(service.refreshPlatform('qidian')).resolves.toEqual({
+      results: [
+        { rankType: 'hotsales', status: 'success' },
+        { rankType: 'yuepiao', status: 'failed', errorCode: 'UPSTREAM_ERROR' },
+        { rankType: 'recom', status: 'success' },
+        { rankType: 'collect', status: 'success' },
+      ],
+    });
+    expect(store.recordFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ rank: 'yuepiao' }), expect.any(Date), expect.any(Error),
+    );
+  });
+
   it('writes a successful crawl completion using the whitelisted result', async () => {
     const store = { read: jest.fn(), write: jest.fn(), recordFailure: jest.fn() };
     const provider: RankingProvider = { platform: 'qidian', fetch: jest.fn().mockResolvedValue(snapshot) };
@@ -67,7 +104,7 @@ describe('RankingsService', () => {
     const logger = { crawlCompleted: jest.fn() } as unknown as StructuredLogger;
     const service = new RankingsService(store, [], lock, logger);
 
-    await service.refresh(snapshot);
+    await expect(service.refresh(snapshot)).rejects.toMatchObject({ status: 409, response: expect.objectContaining({ code: 'REFRESH_IN_PROGRESS' }) });
 
     expect(logger.crawlCompleted).toHaveBeenCalledWith(expect.objectContaining({
       result: 'skipped',

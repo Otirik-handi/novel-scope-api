@@ -18,7 +18,7 @@ describe('SnapshotStoreService', () => {
     const prisma = { $transaction: jest.fn((callback) => callback(tx)), rankingSnapshot: { findFirst: jest.fn() } };
     const store = new SnapshotStoreService(prisma as never);
 
-    await expect(store.write(snapshot)).resolves.toBeUndefined();
+    await expect(store.write(snapshot)).resolves.toBe('snapshot-id');
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.book.upsert).toHaveBeenCalledTimes(10);
     expect(tx.rankingSnapshot.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ sourceUrl: snapshot.sourceUrl }) }));

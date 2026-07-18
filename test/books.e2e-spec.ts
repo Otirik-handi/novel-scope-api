@@ -47,4 +47,47 @@ describe('Book details API', () => {
       .expect(snapshot);
     expect(details.refresh).toHaveBeenCalledWith('123');
   });
+
+  it('allows API-key refresh after the global throttle would otherwise be exhausted', async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(BookDetailsService).useValue(details).compile();
+    const rateLimitedApp = moduleRef.createNestApplication();
+    await rateLimitedApp.init();
+
+    try {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await request(rateLimitedApp.getHttpServer())
+          .post('/v1/admin/books/qidian/123/refresh')
+          .set('X-API-Key', 'test-key')
+          .expect(201);
+      }
+
+      await request(rateLimitedApp.getHttpServer())
+        .post('/v1/admin/books/qidian/123/refresh')
+        .set('X-API-Key', 'test-key')
+        .expect(201);
+    } finally {
+      await rateLimitedApp.close();
+    }
+  });
+
+  it('limits public book detail reads to ten requests per minute', async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(BookDetailsService).useValue(details).compile();
+    const rateLimitedApp = moduleRef.createNestApplication();
+    await rateLimitedApp.init();
+
+    try {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        await request(rateLimitedApp.getHttpServer()).get('/v1/books/qidian/123').expect(200);
+      }
+
+      await request(rateLimitedApp.getHttpServer())
+        .get('/v1/books/qidian/123')
+        .expect(429)
+        .expect((response) => expect(response.body).toMatchObject({ statusCode: 429, code: 'RATE_LIMITED', requestId: expect.any(String) }));
+    } finally {
+      await rateLimitedApp.close();
+    }
+  });
 });

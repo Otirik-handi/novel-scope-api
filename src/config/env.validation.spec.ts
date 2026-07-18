@@ -16,6 +16,7 @@ describe('validateEnvironment', () => {
       qidianMaxConcurrency: 2,
       qidianMinRequestIntervalMs: 1_000,
       bookDetailRefreshTimeoutMs: 35_000,
+      trustProxy: false,
     });
   });
 
@@ -35,5 +36,11 @@ describe('validateEnvironment', () => {
     expect(() =>
       validateEnvironment({ ...required, HTTP_TIMEOUT_MS: 'not-a-number' }),
     ).toThrow('Invalid environment configuration');
+  });
+
+  it('accepts only explicitly supported trusted proxy settings', () => {
+    expect(validateEnvironment({ ...required, TRUST_PROXY: 'loopback' }).trustProxy).toBe('loopback');
+    expect(() => validateEnvironment({ ...required, TRUST_PROXY: 'true' })).toThrow('Invalid environment configuration');
+    expect(() => validateEnvironment({ ...required, TRUST_PROXY: '10.0.0.0/8' })).toThrow('Invalid environment configuration');
   });
 });
