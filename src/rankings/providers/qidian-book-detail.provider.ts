@@ -11,8 +11,8 @@ export class QidianBookDetailProvider {
     const sourceUrl = `https://m.qidian.com/book/${bookId}/`;
     const html = (await this.http.get(sourceUrl)).toString('utf8');
     const record = this.parseBookInfo(html);
-    const title = this.stringValue(record.bName);
-    const author = this.stringValue(record.bAuth);
+    const title = this.stringValue(record.bookName ?? record.bName);
+    const author = this.stringValue(record.authorName ?? record.bAuth);
     if (!title.trim() || !author.trim()) {
       throw new SourceParseError('Qidian SSR does not contain book details');
     }
@@ -20,10 +20,11 @@ export class QidianBookDetailProvider {
       bookId,
       title,
       author,
-      genres: [record.cat, record.subCat].filter((value): value is string => typeof value === 'string' && value.length > 0),
+      genres: [record.chanName ?? record.cat, record.subCateName ?? record.subCat]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0),
       description: this.nullableString(record.desc),
       bookStatus: this.nullableString(record.bookStatus ?? record.status),
-      wordCount: this.parseWordCount(record.cnt),
+      wordCount: this.parseWordCount(record.wordsCnt ?? record.cnt),
       url: sourceUrl,
       sourceUrl,
       fetchedAt: new Date().toISOString(),

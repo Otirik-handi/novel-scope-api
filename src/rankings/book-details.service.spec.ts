@@ -26,7 +26,7 @@ describe('QidianBookDetailProvider', () => {
 
   it.each([123000, '123000'])('accepts an unqualified word count of %p', async (cnt) => {
     const html = `<script id="vite-plugin-ssr_pageContext">${JSON.stringify({
-      pageContext: { pageProps: { pageData: { bookInfo: { bName: 'Test', bAuth: 'Author', cnt } } } },
+      pageContext: { pageProps: { pageData: { bookInfo: { bookName: 'Test', authorName: 'Author', wordsCnt: cnt } } } },
     })}</script>`;
     const provider = new QidianBookDetailProvider({ get: jest.fn().mockResolvedValue(Buffer.from(html)) });
 
@@ -35,7 +35,7 @@ describe('QidianBookDetailProvider', () => {
 
   it('rejects SSR data without a non-empty title and author', async () => {
     const html = `<script id="vite-plugin-ssr_pageContext">${JSON.stringify({
-      pageContext: { pageProps: { pageData: { bookInfo: { cnt: '12万字' } } } },
+      pageContext: { pageProps: { pageData: { bookInfo: { wordsCnt: '12万字' } } } },
     })}</script>`;
     const provider = new QidianBookDetailProvider({ get: jest.fn().mockResolvedValue(Buffer.from(html)) });
 
