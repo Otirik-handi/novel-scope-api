@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import * as cheerio from 'cheerio';
 import iconv from 'iconv-lite';
 import { RankingProvider } from '../domain/ranking-provider';
@@ -7,16 +7,10 @@ import {
   RankingKey,
   RankingSnapshot,
 } from '../domain/ranking.types';
+import { mapWithConcurrency } from '../concurrency';
+import { isSupportedRank, JJWXC_ORDER_STRINGS } from '../ranking-catalog';
+import { RefreshScheduleConfigService } from '../refresh-schedule-config.service';
 import { RankingHttpClient } from './ranking-http.client';
-
-const orderStrings: Record<string, string> = {
-  income: '12',
-  monthly: '7',
-  quarterly: '8',
-  completed: '14',
-  newcomer: '15',
-  thousandWords: '17',
-};
 
 @Injectable()
 export class JjwxcProvider implements RankingProvider {
@@ -25,27 +19,32 @@ export class JjwxcProvider implements RankingProvider {
   constructor(
     @Inject(RankingHttpClient)
     private readonly http: Pick<RankingHttpClient, 'get'>,
+    @Optional()
+    @Inject(RefreshScheduleConfigService)
+    private readonly scheduleConfig?: Pick<RefreshScheduleConfigService, 'get'>,
   ) {}
 
   async fetch(key: RankingKey): Promise<RankingSnapshot> {
-    const orderstr = orderStrings[key.rank];
-    if (!orderstr) {
+    if (!isSupportedRank('jjwxc', key.rank)) {
       throw new Error(`Unsupported JJWXC rank: ${key.rank}`);
     }
+    const orderstr = JJWXC_ORDER_STRINGS[key.rank] as string;
 
     const channel = key.channel ?? '0';
     const sourceUrl = `https://www.jjwxc.net/topten.php?orderstr=${orderstr}&t=${channel}`;
     const items = this.parseRanking(
       iconv.decode(await this.http.get(sourceUrl), 'gb18030'),
     );
-    await Promise.all(
-      items.map(async (item) => {
+    await mapWithConcurrency(
+      items,
+      this.scheduleConfig?.get().jjwxcDetailConcurrency ?? 1,
+      async (item) => {
         try {
           Object.assign(item, await this.fetchDetails(item));
         } catch {
           // Detail data is optional; keep the rank entry when it cannot be fetched.
         }
-      }),
+      },
     );
 
     return {

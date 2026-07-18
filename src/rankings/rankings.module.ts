@@ -3,6 +3,7 @@ import { ApiKeyGuard } from './api-key.guard';
 import { JjwxcProvider } from './providers/jjwxc.provider';
 import { QidianProvider } from './providers/qidian.provider';
 import { RankingHttpClient } from './providers/ranking-http.client';
+import { RefreshScheduleConfigService } from './refresh-schedule-config.service';
 import { RankingsController } from './rankings.controller';
 import { RankingsService, RANKING_PROVIDERS } from './rankings.service';
 import { RefreshScheduler } from './refresh.scheduler';
@@ -13,6 +14,7 @@ import { SnapshotStoreService } from './snapshot-store.service';
   providers: [
     ApiKeyGuard,
     SnapshotStoreService,
+    RefreshScheduleConfigService,
     RankingHttpClient,
     QidianProvider,
     JjwxcProvider,

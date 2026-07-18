@@ -35,13 +35,29 @@ describe('QidianProvider', () => {
     await expect(provider.fetch(key)).rejects.toBeInstanceOf(SourceParseError);
   });
 
-  it('rejects unsupported ranks before requesting a page', async () => {
+  it.each([
+    ['signnewbook', '/rank/sign/'],
+    ['newsign', '/rank/sign/'],
+    ['pubnewbook', '/rank/newbook/'],
+    ['collect', '/rank/newfans/'],
+  ])('supports %s through %s', async (rank, path) => {
+    const html = await readFile(
+      join(process.cwd(), 'test', 'fixtures', 'qidian-hotsales.html'),
+      'utf8',
+    );
+    const request = { get: jest.fn().mockResolvedValue(Buffer.from(html)) };
+    const provider = new QidianProvider(request);
+
+    await provider.fetch({ platform: 'qidian', rank, channel: null });
+
+    expect(request.get).toHaveBeenCalledWith(`https://m.qidian.com${path}`);
+  });
+
+  it.each(['unknown', 'toString'])('rejects %s before requesting a page', async (rank) => {
     const request = { get: jest.fn() };
     const provider = new QidianProvider(request);
 
-    await expect(provider.fetch({ ...key, rank: 'unknown' })).rejects.toThrow(
-      'Unsupported Qidian rank',
-    );
+    await expect(provider.fetch({ ...key, rank })).rejects.toThrow('Unsupported Qidian rank');
     expect(request.get).not.toHaveBeenCalled();
   });
 });

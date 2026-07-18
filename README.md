@@ -35,6 +35,22 @@ SNAPSHOT_DIR=data/snapshots
 PORT=3000
 ```
 
+定时刷新清单使用与 `.env` 同级的必需文件 `refresh-rankings.json`。服务仅在启动时读取该文件；修改后必须重启。文件缺失、JSON 无效或配置字段不合法时，服务会启动失败，避免以未知刷新范围运行。
+
+```json
+{
+  "cron": "0 0 */6 * * *",
+  "targetConcurrency": 1,
+  "jjwxcDetailConcurrency": 4,
+  "targets": [
+    { "platform": "qidian", "rank": "hotsales" },
+    { "platform": "jjwxc", "rank": "income", "channel": "0" }
+  ]
+}
+```
+
+`cron` 是全局六字段 Cron 表达式；`targetConcurrency` 限制同时刷新的榜单数；`jjwxcDetailConcurrency` 限制单个晋江榜单同时请求的作品详情数。`targets` 至少包含一项，晋江目标必须显式指定字符串 `channel`，起点目标不使用频道。可按需将已支持的榜单和频道加入清单。
+
 开发环境启动：
 
 ```powershell
@@ -48,7 +64,7 @@ npm run build
 npm run start
 ```
 
-快照默认写入 `data/snapshots`。定时任务每六小时刷新起点 `hotsales` 与晋江 `income`（频道 `0`）榜单；刷新失败时不会覆盖最近一次成功快照，已有数据会以 `stale` 状态返回。
+快照默认写入 `data/snapshots`。仓库初始清单每六小时刷新起点 `hotsales` 与晋江 `income`（频道 `0`）榜单；刷新失败时不会覆盖最近一次成功快照，已有数据会以 `stale` 状态返回。
 
 ## API 简介
 

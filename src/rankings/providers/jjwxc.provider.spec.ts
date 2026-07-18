@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import iconv from 'iconv-lite';
+import { RefreshScheduleConfigService } from '../refresh-schedule-config.service';
 import { JjwxcProvider } from './jjwxc.provider';
 
 describe('JjwxcProvider', () => {
@@ -11,7 +12,7 @@ describe('JjwxcProvider', () => {
     const detailHtml = await fixture('jjwxc-onebook.html');
     const request = jest
       .fn()
-      .mockResolvedValueOnce(Buffer.from(rankHtml))
+      .mockResolvedValueOnce(iconv.encode(rankHtml, 'gb18030'))
       .mockResolvedValueOnce(iconv.encode(detailHtml, 'gb18030'));
     const provider = new JjwxcProvider({ get: request });
 
@@ -39,7 +40,7 @@ describe('JjwxcProvider', () => {
   it('keeps ranking entries when a detail request fails', async () => {
     const request = jest
       .fn()
-      .mockResolvedValueOnce(Buffer.from(await fixture('jjwxc-topten.html')))
+      .mockResolvedValueOnce(iconv.encode(await fixture('jjwxc-topten.html'), 'gb18030'))
       .mockRejectedValueOnce(new Error('network failed'));
     const provider = new JjwxcProvider({ get: request });
 
@@ -50,13 +51,44 @@ describe('JjwxcProvider', () => {
     expect(snapshot.items[0].status).toBeNull();
   });
 
-  it('rejects unsupported ranks before requesting a page', async () => {
+  it('limits concurrent detail requests to the configured maximum', async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const rankHtml = `
+      <table>
+        <tr><td><a href="onebook.php?novelid=1">作品一</a></td></tr>
+        <tr><td><a href="onebook.php?novelid=2">作品二</a></td></tr>
+        <tr><td><a href="onebook.php?novelid=3">作品三</a></td></tr>
+      </table>`;
+    const request = {
+      get: jest.fn(async (url: string) => {
+        if (url.includes('topten.php')) {
+          return iconv.encode(rankHtml, 'gb18030');
+        }
+
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return iconv.encode('<span itemprop="wordCount">1</span>', 'gb18030');
+      }),
+    };
+    const config = {
+      get: jest.fn().mockReturnValue({ jjwxcDetailConcurrency: 2 }),
+    } as unknown as RefreshScheduleConfigService;
+    const provider = new JjwxcProvider(request, config);
+
+    const snapshot = await provider.fetch(key);
+
+    expect(snapshot.items).toHaveLength(3);
+    expect(maximumActive).toBe(2);
+  });
+
+  it.each(['unknown', 'toString'])('rejects %s before requesting a page', async (rank) => {
     const request = jest.fn();
     const provider = new JjwxcProvider({ get: request });
 
-    await expect(provider.fetch({ ...key, rank: 'unknown' })).rejects.toThrow(
-      'Unsupported JJWXC rank',
-    );
+    await expect(provider.fetch({ ...key, rank })).rejects.toThrow('Unsupported JJWXC rank');
     expect(request).not.toHaveBeenCalled();
   });
 });

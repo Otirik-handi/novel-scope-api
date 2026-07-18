@@ -20,7 +20,7 @@ X-API-Key: <API_KEY>
 
 | 平台 (`platform`) | 榜单标识 (`rank`) | `channel` |
 | --- | --- | --- |
-| `qidian` | `hotsales`、`yuepiao`、`newbook`、`newauthor`、`recom`、`readindex`、`sanjiang` | 不使用，不传即可 |
+| `qidian` | `hotsales`、`yuepiao`、`signnewbook`、`newsign`、`newbook`、`pubnewbook`、`newauthor`、`recom`、`readindex`、`collect`、`sanjiang` | 不使用，不传即可 |
 | `jjwxc` | `income`、`monthly`、`quarterly`、`completed`、`newcomer`、`thousandWords` | 可选；建议传字符串 `0` |
 
 `platform` 与 `rank` 均为必填非空字符串。`platform` 仅允许 `qidian` 或 `jjwxc`。

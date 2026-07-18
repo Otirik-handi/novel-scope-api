@@ -1,0 +1,16 @@
+{
+  "cron": "0 0 */6 * * *",
+  "targetConcurrency": 1,
+  "jjwxcDetailConcurrency": 4,
+  "targets": [
+    {
+      "platform": "qidian",
+      "rank": "hotsales"
+    },
+    {
+      "platform": "jjwxc",
+      "rank": "income",
+      "channel": "0"
+    }
+  ]
+}

@@ -1,17 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { RankingProvider } from '../domain/ranking-provider';
 import { RankingItem, RankingKey, RankingSnapshot } from '../domain/ranking.types';
+import { isSupportedRank, QIDIAN_RANK_PATHS } from '../ranking-catalog';
 import { RankingHttpClient } from './ranking-http.client';
-
-const rankPaths: Record<string, string> = {
-  hotsales: '/rank/hotsales/',
-  yuepiao: '/rank/yuepiao/',
-  newbook: '/rank/newbook/',
-  newauthor: '/rank/newauthor/',
-  recom: '/rank/rec/',
-  readindex: '/rank/readindex/',
-  sanjiang: '/sanjiang/',
-};
 
 export class SourceParseError extends Error {}
 
@@ -22,10 +13,10 @@ export class QidianProvider implements RankingProvider {
   constructor(@Inject(RankingHttpClient) private readonly http: Pick<RankingHttpClient, 'get'>) {}
 
   async fetch(key: RankingKey): Promise<RankingSnapshot> {
-    const path = rankPaths[key.rank];
-    if (!path) {
+    if (!isSupportedRank('qidian', key.rank)) {
       throw new Error(`Unsupported Qidian rank: ${key.rank}`);
     }
+    const path = QIDIAN_RANK_PATHS[key.rank] as string;
 
     const sourceUrl = `https://m.qidian.com${path}`;
     const html = (await this.http.get(sourceUrl)).toString('utf8');
