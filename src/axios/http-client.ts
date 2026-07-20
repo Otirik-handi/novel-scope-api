@@ -16,8 +16,11 @@ export type HttpRequestDelay = (milliseconds: number) => Promise<void>;
 
 const timeoutErrorCodes = new Set(['ECONNABORTED', 'ETIMEDOUT']);
 const localAxiosErrorCodes = new Set([
+  'ERR_BAD_REQUEST',
   'ERR_BAD_OPTION',
   'ERR_BAD_OPTION_VALUE',
+  'ERR_DEPRECATED',
+  'ERR_FORM_DATA_DEPTH_EXCEEDED',
   'ERR_INVALID_URL',
   'ERR_NOT_SUPPORT',
 ]);
