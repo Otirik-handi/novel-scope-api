@@ -8,7 +8,7 @@ import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { requestContextMiddleware } from './request-context';
 import { appLogger, requestCompletionLogger } from './structured-logger';
-import { RankingsModule } from './rankings/rankings.module';
+import { RankingsModule } from './api/rankings.module';
 import { HttpErrorFilter } from './http-exception.filter';
 
 @Module({

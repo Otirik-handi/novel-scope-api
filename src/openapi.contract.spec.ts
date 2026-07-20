@@ -3,9 +3,9 @@ import { Test } from '@nestjs/testing';
 import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import { HealthController } from './health.controller';
 import { PrismaService } from './prisma/prisma.service';
-import { BooksController } from './rankings/books.controller';
+import { BooksController } from './api/books.controller';
 import { BookDetailsService } from './rankings/book-details.service';
-import { RankingsController } from './rankings/rankings.controller';
+import { RankingsController } from './api/rankings.controller';
 import { RankingsService } from './rankings/rankings.service';
 
 describe('OpenAPI contract', () => {

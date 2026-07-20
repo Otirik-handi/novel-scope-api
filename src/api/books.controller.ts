@@ -9,8 +9,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { BookDetailsService } from './book-details.service';
-import { BookDetailSnapshot } from './domain/book-detail.types';
+import { BookDetailsService } from '../rankings/book-details.service';
+import { BookDetailSnapshot } from '../types/book-detail.types';
 import { ApiErrorResponseDto, BookDetailResponseDto } from './dto/api-response.dto';
 
 @ApiTags('books')

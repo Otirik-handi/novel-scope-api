@@ -1,8 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../app.module';
-import { QidianProvider } from './providers/qidian.provider';
-import { RankingHttpClient } from './providers/ranking-http.client';
-import { RANKING_PROVIDERS } from './rankings.service';
+import { QidianProvider } from '../rankings/providers/qidian.provider';
+import { RankingHttpClient } from '../rankings/providers/ranking-http.client';
+import { RANKING_PROVIDERS } from '../rankings/rankings.service';
 
 describe('RankingsModule', () => {
   it('registers only the Qidian provider for V0.1', async () => {

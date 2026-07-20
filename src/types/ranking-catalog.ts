@@ -1,4 +1,4 @@
-import { Platform } from './domain/ranking.types';
+import { Platform } from './ranking.types';
 
 export const QIDIAN_RANK_PATHS: Readonly<Record<string, string>> = {
   hotsales: '/rank/hotsales/',
