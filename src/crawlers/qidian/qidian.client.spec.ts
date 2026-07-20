@@ -436,6 +436,43 @@ describe("QidianClient", () => {
   );
 
   it.each([
+    '<article><img src=""></article>',
+    '<article><img src="   "></article>',
+    '<article><picture><source srcset=""></picture></article>',
+    '<article><picture><source srcset="   "></picture></article>',
+    '<article><a href="/book/"></a></article>',
+    '<article><a href="/book/?x=1"></a></article>',
+  ])(
+    "does not treat an empty media or book reference as normal content: %s",
+    async (content) => {
+      const html = `<html><head><title>起点中文网</title></head><body>${content}<form class="login-form"></form></body></html>`;
+      const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+      await expect(
+        createClient(adapter).fetchPage("/book/123/"),
+      ).rejects.toMatchObject({
+        code: "QIDIAN_ACCESS_BLOCKED",
+        reason: "login",
+      });
+    },
+  );
+
+  it.each([
+    '<article><img src="/cover.jpg"></article>',
+    '<article><img src="" srcset="/cover.webp 1x"></article>',
+    '<article><picture><source srcset="/cover.webp 1x"></picture></article>',
+    '<article><a href="/book/1031940621"></a></article>',
+    '<article><a href="https://www.qidian.com/book/example-slug?ref=list"></a></article>',
+  ])("accepts a non-empty media or book reference: %s", async (content) => {
+    const html = `<html><head><title>起点中文网</title></head><body>${content}<form class="login-form"></form></body></html>`;
+    const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+    await expect(
+      createClient(adapter).fetchPage("/book/123/"),
+    ).resolves.toMatchObject({ html });
+  });
+
+  it.each([
     '<article><h1>这不是独立的正常正文标题</h1><form class="login-form"></form></article>',
     '<article><h1>这不是独立的正常正文标题</h1><section class="captcha-panel"></section></article>',
   ])(

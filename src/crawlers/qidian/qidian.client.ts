@@ -381,11 +381,42 @@ export class QidianClient {
           .find("*")
           .filter((_index, candidate) => isExplicitlyHidden(candidate))
           .remove();
+        const hasImageReference = content
+          .find("img[src], img[srcset], picture source[srcset]")
+          .toArray()
+          .some((image) => {
+            const element = $(image);
+            const sources = [element.attr("src"), element.attr("srcset")];
+
+            return sources.some((source) => Boolean(source?.trim()));
+          });
+        const hasBookLink = content
+          .find("a[href]")
+          .toArray()
+          .some((link) => {
+            const href = $(link).attr("href")?.trim();
+
+            if (!href) {
+              return false;
+            }
+
+            try {
+              const url = new URL(href, QIDIAN_BASE_URL);
+              const bookPath = url.pathname.match(/^\/book\/([^/]+)(?:\/|$)/);
+
+              return (
+                url.origin === QIDIAN_BASE_URL &&
+                Boolean(bookPath && decodeURIComponent(bookPath[1]).trim())
+              );
+            } catch {
+              return false;
+            }
+          });
 
         return (
           content.text().trim().length > 0 ||
-          content.find("img[src], picture source[srcset], a[href*='/book/']")
-            .length > 0
+          hasImageReference ||
+          hasBookLink
         );
       });
 
