@@ -6,7 +6,7 @@ NovelScope API 是基于 NestJS、Prisma 和 PostgreSQL 的小说榜单与详情
 
 ## 前置条件
 
-- Node.js 20.12 或更高版本（推荐 Node.js 24）
+- Node.js 20.19.0 或更高版本（推荐 Node.js 24）
 - PostgreSQL 14 或更高版本
 - 两个不同的 PostgreSQL 数据库：应用数据库和测试数据库
 - 一个明确、稳定且符合目标站要求的 `QIDIAN_USER_AGENT`

@@ -26,12 +26,13 @@ describe("Books API (e2e)", () => {
       return { crawl: crawlBook };
     },
   };
-  let context: E2eApplication;
+  let context: E2eApplication | undefined;
   let repository: BooksRepository;
 
   beforeAll(async () => {
-    context = await createE2eApplication(crawlersService);
-    repository = context.app.get(BooksRepository);
+    const initializedContext = await createE2eApplication(crawlersService);
+    context = initializedContext;
+    repository = initializedContext.app.get(BooksRepository);
   });
 
   beforeEach(async () => {
@@ -45,16 +46,28 @@ describe("Books API (e2e)", () => {
   });
 
   afterAll(async () => {
-    await context.close();
+    await context?.close();
   });
 
   async function cleanQidianData(): Promise<void> {
+    if (context === undefined) {
+      return;
+    }
+
     await context.prisma.rankingSnapshot.deleteMany({
       where: { platform: "qidian" },
     });
     await context.prisma.book.deleteMany({
       where: { platform: "qidian" },
     });
+  }
+
+  function requireContext(): E2eApplication {
+    if (context === undefined) {
+      throw new Error("Books E2E application was not initialized");
+    }
+
+    return context;
   }
 
   function makeBook(
@@ -93,7 +106,7 @@ describe("Books API (e2e)", () => {
     "/v1/books/unknown/1031940621",
     "/v1/books/qidian/not-a-number",
   ])("returns 400 for invalid route parameters: %s", async (path) => {
-    await request(context.app.getHttpServer()).get(path).expect(400);
+    await request(requireContext().app.getHttpServer()).get(path).expect(400);
     expect(crawlBook).not.toHaveBeenCalled();
   });
 
@@ -104,7 +117,7 @@ describe("Books API (e2e)", () => {
       new Date(Date.now() + 60_000),
     );
 
-    const response = await request(context.app.getHttpServer())
+    const response = await request(requireContext().app.getHttpServer())
       .get(`/v1/books/qidian/${externalBookId}`)
       .expect(200);
 
@@ -122,10 +135,10 @@ describe("Books API (e2e)", () => {
     const externalBookId = "9900010002";
     crawlBook.mockResolvedValueOnce(makeBook(externalBookId));
 
-    const first = await request(context.app.getHttpServer())
+    const first = await request(requireContext().app.getHttpServer())
       .get(`/v1/books/qidian/${externalBookId}`)
       .expect(200);
-    const second = await request(context.app.getHttpServer())
+    const second = await request(requireContext().app.getHttpServer())
       .get(`/v1/books/qidian/${externalBookId}`)
       .expect(200);
 
@@ -138,7 +151,7 @@ describe("Books API (e2e)", () => {
     });
     expect(second.body).toEqual(first.body);
     await expect(
-      context.prisma.bookDetail.count({
+      requireContext().prisma.bookDetail.count({
         where: { book: { platform: "qidian", externalBookId } },
       }),
     ).resolves.toBe(1);
@@ -158,7 +171,7 @@ describe("Books API (e2e)", () => {
       makeBook(externalBookId, { title: "刷新后的标题" }),
     );
 
-    const response = await request(context.app.getHttpServer())
+    const response = await request(requireContext().app.getHttpServer())
       .get(`/v1/books/qidian/${externalBookId}`)
       .expect(200);
 
@@ -182,7 +195,7 @@ describe("Books API (e2e)", () => {
     );
     crawlBook.mockRejectedValueOnce(new Error("private crawler failure"));
 
-    const response = await request(context.app.getHttpServer())
+    const response = await request(requireContext().app.getHttpServer())
       .get(`/v1/books/qidian/${externalBookId}`)
       .expect(200);
 
@@ -210,7 +223,7 @@ describe("Books API (e2e)", () => {
       new Error("axios failed with private-upstream-token"),
     );
 
-    const response = await request(context.app.getHttpServer())
+    const response = await request(requireContext().app.getHttpServer())
       .get(`/v1/books/qidian/${externalBookId}`)
       .expect(502);
 
@@ -222,7 +235,7 @@ describe("Books API (e2e)", () => {
       "private-upstream-token",
     );
     await expect(
-      context.prisma.book.count({
+      requireContext().prisma.book.count({
         where: { platform: "qidian", externalBookId },
       }),
     ).resolves.toBe(0);

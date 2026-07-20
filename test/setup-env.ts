@@ -1,5 +1,5 @@
 import { ValidationPipe, type INestApplication } from "@nestjs/common";
-import { Test } from "@nestjs/testing";
+import { Test, type TestingModule } from "@nestjs/testing";
 import { assertDatabaseIsolation } from "../scripts/database-isolation.cjs";
 import { CrawlersService } from "../src/crawlers/crawlers.service";
 import { PrismaService } from "../src/shared/database/prisma.service";
@@ -31,15 +31,18 @@ export async function createE2eApplication(
   process.env.NODE_ENV = "test";
   process.env.QIDIAN_USER_AGENT = "NovelScope E2E tests";
 
+  let moduleReference: TestingModule | undefined;
+  let app: INestApplication | undefined;
+
   try {
     const { AppModule } = await import("../src/app.module");
-    const moduleReference = await Test.createTestingModule({
+    moduleReference = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(CrawlersService)
       .useValue(crawlersService)
       .compile();
-    const app = moduleReference.createNestApplication();
+    app = moduleReference.createNestApplication();
     app.useLogger(false);
     app.useGlobalPipes(
       new ValidationPipe({
@@ -48,29 +51,59 @@ export async function createE2eApplication(
       }),
     );
     await app.init();
+    const initializedApp = app;
+    let closePromise: Promise<void> | undefined;
 
     return {
-      app,
-      prisma: app.get(PrismaService),
-      async close() {
-        try {
-          await app.close();
-        } finally {
-          restoreEnvironment(
-            originalDatabaseUrl,
-            originalNodeEnvironment,
-            originalQidianUserAgent,
-          );
+      app: initializedApp,
+      prisma: initializedApp.get(PrismaService),
+      close() {
+        if (closePromise === undefined) {
+          closePromise = (async () => {
+            try {
+              await initializedApp.close();
+            } finally {
+              restoreEnvironment(
+                originalDatabaseUrl,
+                originalNodeEnvironment,
+                originalQidianUserAgent,
+              );
+            }
+          })();
         }
+
+        return closePromise;
       },
     };
   } catch (error) {
-    restoreEnvironment(
-      originalDatabaseUrl,
-      originalNodeEnvironment,
-      originalQidianUserAgent,
-    );
+    try {
+      await closeFailedInitialization(app, moduleReference);
+    } finally {
+      restoreEnvironment(
+        originalDatabaseUrl,
+        originalNodeEnvironment,
+        originalQidianUserAgent,
+      );
+    }
     throw error;
+  }
+}
+
+async function closeFailedInitialization(
+  app: INestApplication | undefined,
+  moduleReference: TestingModule | undefined,
+): Promise<void> {
+  if (app !== undefined) {
+    try {
+      await app.close();
+      return;
+    } catch {
+      // Fall through so the underlying TestingModule gets a cleanup attempt.
+    }
+  }
+
+  if (moduleReference !== undefined) {
+    await moduleReference.close().catch(() => undefined);
   }
 }
 

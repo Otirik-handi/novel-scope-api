@@ -30,7 +30,7 @@ describe("Rankings API (e2e)", () => {
       throw new Error("Unexpected book crawler access in rankings E2E");
     },
   };
-  let context: E2eApplication;
+  let context: E2eApplication | undefined;
 
   beforeAll(async () => {
     context = await createE2eApplication(crawlersService);
@@ -47,16 +47,28 @@ describe("Rankings API (e2e)", () => {
   });
 
   afterAll(async () => {
-    await context.close();
+    await context?.close();
   });
 
   async function cleanQidianData(): Promise<void> {
+    if (context === undefined) {
+      return;
+    }
+
     await context.prisma.rankingSnapshot.deleteMany({
       where: { platform: "qidian" },
     });
     await context.prisma.book.deleteMany({
       where: { platform: "qidian" },
     });
+  }
+
+  function requireContext(): E2eApplication {
+    if (context === undefined) {
+      throw new Error("Rankings E2E application was not initialized");
+    }
+
+    return context;
   }
 
   function makeRanking(
@@ -87,7 +99,7 @@ describe("Rankings API (e2e)", () => {
   }
 
   it("returns 404 when no latest snapshot exists", async () => {
-    const response = await request(context.app.getHttpServer())
+    const response = await request(requireContext().app.getHttpServer())
       .get("/v1/rankings/qidian/yuepiao")
       .expect(404);
 
@@ -102,17 +114,17 @@ describe("Rankings API (e2e)", () => {
     "/v1/rankings/unknown/yuepiao",
     "/v1/rankings/qidian/unknown",
   ])("returns 400 for invalid route parameters: %s", async (path) => {
-    await request(context.app.getHttpServer()).get(path).expect(400);
+    await request(requireContext().app.getHttpServer()).get(path).expect(400);
     expect(crawlRanking).not.toHaveBeenCalled();
   });
 
   it("refreshes one ranking, persists it, and returns latest items ordered by rank", async () => {
     crawlRanking.mockResolvedValueOnce(makeRanking("yuepiao"));
 
-    const refreshed = await request(context.app.getHttpServer())
+    const refreshed = await request(requireContext().app.getHttpServer())
       .post("/v1/rankings/qidian/yuepiao/refresh")
       .expect(201);
-    const latest = await request(context.app.getHttpServer())
+    const latest = await request(requireContext().app.getHttpServer())
       .get("/v1/rankings/qidian/yuepiao")
       .expect(200);
 
@@ -125,7 +137,7 @@ describe("Rankings API (e2e)", () => {
       [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     );
     await expect(
-      context.prisma.rankingSnapshot.count({
+      requireContext().prisma.rankingSnapshot.count({
         where: { platform: "qidian", rankType: "yuepiao" },
       }),
     ).resolves.toBe(1);
@@ -136,7 +148,7 @@ describe("Rankings API (e2e)", () => {
       new Error("upstream failed with secret-token"),
     );
 
-    const response = await request(context.app.getHttpServer())
+    const response = await request(requireContext().app.getHttpServer())
       .post("/v1/rankings/qidian/hotsales/refresh")
       .expect(502);
 
@@ -145,7 +157,9 @@ describe("Rankings API (e2e)", () => {
       message: "Failed to refresh ranking",
     });
     expect(JSON.stringify(response.body)).not.toContain("secret-token");
-    await expect(context.prisma.rankingSnapshot.count()).resolves.toBe(0);
+    await expect(
+      requireContext().prisma.rankingSnapshot.count(),
+    ).resolves.toBe(0);
   });
 
   it("refreshes all four rankings in order and continues after one failure", async () => {
@@ -158,7 +172,7 @@ describe("Rankings API (e2e)", () => {
       return makeRanking(rankType, 2);
     });
 
-    const response = await request(context.app.getHttpServer())
+    const response = await request(requireContext().app.getHttpServer())
       .post("/v1/rankings/qidian/refresh")
       .expect(201);
 
@@ -188,11 +202,13 @@ describe("Rankings API (e2e)", () => {
     expect(JSON.stringify(response.body)).not.toContain(
       "private upstream diagnostics",
     );
-    await expect(context.prisma.rankingSnapshot.count()).resolves.toBe(3);
+    await expect(
+      requireContext().prisma.rankingSnapshot.count(),
+    ).resolves.toBe(3);
   });
 
   it("does not register the ranking cron job in the test environment", () => {
-    const registry = context.app.get(SchedulerRegistry);
+    const registry = requireContext().app.get(SchedulerRegistry);
 
     expect(
       registry.doesExist("cron", RANKINGS_REFRESH_JOB_NAME),
