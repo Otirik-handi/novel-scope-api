@@ -1,0 +1,40 @@
+import {
+  normalizeHtmlText,
+  normalizePlainText,
+} from "./text-normalizer.util";
+
+describe("normalizePlainText", () => {
+  it("collapses horizontal whitespace and trims each line", () => {
+    expect(normalizePlainText("  第一行\t 有内容  \r\n 第二行  ")).toBe(
+      "第一行 有内容\n第二行",
+    );
+  });
+
+  it("compresses excessive blank lines while preserving paragraphs", () => {
+    expect(normalizePlainText("第一段\n\n\n \n第二段")).toBe(
+      "第一段\n\n第二段",
+    );
+  });
+});
+
+describe("normalizeHtmlText", () => {
+  it("converts breaks and block elements into newlines", () => {
+    const html =
+      "<p>第一行<br>第二行</p><div>第三行&nbsp;&nbsp;内容</div>";
+
+    expect(normalizeHtmlText(html)).toBe("第一行\n第二行\n第三行 内容");
+  });
+
+  it("removes tags while retaining and normalizing inline text", () => {
+    expect(
+      normalizeHtmlText("<p>这是一段 <strong>精彩</strong> 的简介。</p>"),
+    ).toBe("这是一段 精彩 的简介。");
+  });
+
+  it("decodes entities and removes non-content elements", () => {
+    const html =
+      "<style>.hidden { display: none; }</style><p>Tom &amp; Jerry</p><script>alert('x')</script>";
+
+    expect(normalizeHtmlText(html)).toBe("Tom & Jerry");
+  });
+});

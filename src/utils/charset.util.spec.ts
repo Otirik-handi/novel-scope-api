@@ -1,0 +1,30 @@
+import iconv from "iconv-lite";
+import { decodeBuffer } from "./charset.util";
+
+describe("decodeBuffer", () => {
+  it("decodes UTF-8 when no charset is declared", () => {
+    expect(decodeBuffer(Buffer.from("默认使用 UTF-8"))).toBe(
+      "默认使用 UTF-8",
+    );
+  });
+
+  it("decodes a charset declared by Content-Type", () => {
+    const source = iconv.encode("中文内容", "gbk");
+
+    expect(decodeBuffer(source, 'text/html; Charset="GBK"')).toBe(
+      "中文内容",
+    );
+  });
+
+  it("accepts a quoted bare charset and Uint8Array input", () => {
+    const source = new Uint8Array(iconv.encode("小说简介", "gb18030"));
+
+    expect(decodeBuffer(source, " 'gb18030' ")).toBe("小说简介");
+  });
+
+  it("rejects an explicitly unsupported charset", () => {
+    expect(() =>
+      decodeBuffer(Buffer.from("content"), "text/plain; charset=x-unknown"),
+    ).toThrow('Unsupported charset "x-unknown"');
+  });
+});
