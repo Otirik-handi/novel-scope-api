@@ -373,6 +373,109 @@ describe("QidianClient", () => {
   );
 
   it.each([
+    [
+      '<p>请登录后继续阅读本书的完整内容。</p><form class="login-form"></form>',
+      "login",
+    ],
+    [
+      '<p>请先完成安全验证才能继续访问当前页面。</p><section class="captcha-panel"></section>',
+      "captcha",
+    ],
+  ])(
+    "does not treat access-wall prompt text in main as normal content: %s",
+    async (content, reason) => {
+      const html = `<html><head><title>起点中文网</title></head><body><main>${content}</main></body></html>`;
+      const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+      await expect(
+        createClient(adapter).fetchPage("/book/123/"),
+      ).rejects.toMatchObject({
+        code: "QIDIAN_ACCESS_BLOCKED",
+        reason,
+      });
+    },
+  );
+
+  it("ignores non-visible template text when checking for normal content", async () => {
+    const html = `<html><head><title>起点中文网</title></head><body><article>
+      <script>const longMessage = "normal content placeholder";</script>
+      <style>.login-form { display: block; }</style>
+      <noscript>这是一段很长但不可见的备用模板文本。</noscript>
+      <template><p>这是一段尚未渲染的模板正文内容。</p></template>
+      <p hidden>这是一段隐藏的正文占位文本。</p>
+    </article><form class="login-form"></form></body></html>`;
+    const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+    await expect(
+      createClient(adapter).fetchPage("/book/123/"),
+    ).rejects.toMatchObject({
+      code: "QIDIAN_ACCESS_BLOCKED",
+      reason: "login",
+    });
+  });
+
+  it.each([
+    [
+      '<article><h1>书名</h1></article>',
+      '<form class="login-form"></form>',
+    ],
+    [
+      '<article><img src="/cover.jpg" alt="书籍封面"></article>',
+      '<section class="captcha-panel"></section>',
+    ],
+  ])(
+    "accepts short independent article content beside a blocker: %s",
+    async (content, blocker) => {
+      const html = `<html><head><title>书籍详情</title></head><body>${content}${blocker}</body></html>`;
+      const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+      await expect(
+        createClient(adapter).fetchPage("/book/123/"),
+      ).resolves.toMatchObject({ html });
+    },
+  );
+
+  it.each([
+    '<article><h1>这不是独立的正常正文标题</h1><form class="login-form"></form></article>',
+    '<article><h1>这不是独立的正常正文标题</h1><section class="captcha-panel"></section></article>',
+  ])(
+    "does not let a container enclosing the blocker prove normal content: %s",
+    async (content) => {
+      const html = `<html><head><title>起点中文网</title></head><body>${content}</body></html>`;
+      const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+      await expect(
+        createClient(adapter).fetchPage("/book/123/"),
+      ).rejects.toMatchObject({ code: "QIDIAN_ACCESS_BLOCKED" });
+    },
+  );
+
+  it.each([
+    [
+      '<div class="rank-box"><a href="/book/1"><img src="/cover.jpg"></a></div>',
+      '<form class="login-form"></form>',
+    ],
+    [
+      '<section class="book-information"><h1>书名</h1></section>',
+      '<div class="captcha-panel"></div>',
+    ],
+    [
+      '<div class="book-content-wrap"><a href="/book/1">书</a></div>',
+      '<form action="/login"></form>',
+    ],
+  ])(
+    "accepts independent Qidian content beside a preloaded blocker: %s",
+    async (content, blocker) => {
+      const html = `<html><head><title>起点中文网</title></head><body>${content}${blocker}</body></html>`;
+      const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+      await expect(
+        createClient(adapter).fetchPage("/book/123/"),
+      ).resolves.toMatchObject({ html });
+    },
+  );
+
+  it.each([
     '<form class="login-form" hidden></form>',
     '<div aria-hidden="true"><form action="/login"></form></div>',
     '<section class="captcha-panel" style="display: none"></section>',

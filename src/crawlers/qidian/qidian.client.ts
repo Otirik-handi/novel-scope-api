@@ -285,37 +285,42 @@ export class QidianClient {
     const $ = load(html);
     const accessNodes = $("form, div, section").toArray();
     type HtmlElement = (typeof accessNodes)[number];
-    const isVisible = (node: HtmlElement): boolean =>
-      [node, ...$(node).parents().toArray()].every((candidate) => {
-        const element = $(candidate);
-        const ariaHidden = element.attr("aria-hidden")?.trim().toLowerCase();
-        const style = element.attr("style")?.replace(/\s+/g, "").toLowerCase();
+    const isExplicitlyHidden = (node: HtmlElement): boolean => {
+      const element = $(node);
+      const ariaHidden = element.attr("aria-hidden")?.trim().toLowerCase();
+      const style = element.attr("style")?.replace(/\s+/g, "").toLowerCase();
 
-        return (
-          element.attr("hidden") === undefined &&
-          ariaHidden !== "true" &&
-          !style
+      return (
+        element.attr("hidden") !== undefined ||
+        ariaHidden === "true" ||
+        Boolean(
+          style
             ?.split(";")
             .some(
               (declaration) =>
                 declaration.startsWith("display:none") ||
                 declaration.startsWith("visibility:hidden"),
-            )
-        );
-      });
+            ),
+        )
+      );
+    };
+    const isVisible = (node: HtmlElement): boolean =>
+      [node, ...$(node).parents().toArray()].every(
+        (candidate) => !isExplicitlyHidden(candidate),
+      );
     const isCaptchaNode = (node: HtmlElement): boolean => {
       const element = $(node);
       const identity = `${element.attr("id") ?? ""} ${element.attr("class") ?? ""}`;
 
       return /(?:captcha|geetest|verify(?:-?code)?)/i.test(identity);
     };
-    const hasCaptchaChallenge = accessNodes.some(
+    const visibleCaptchaNodes = accessNodes.filter(
       (node) => isCaptchaNode(node) && isVisible(node),
     );
 
-    const hasLoginForm = $("form")
+    const visibleLoginForms = $("form")
       .toArray()
-      .some((form) => {
+      .filter((form) => {
         const element = $(form);
 
         if (!isVisible(form)) {
@@ -340,13 +345,16 @@ export class QidianClient {
           return false;
         }
       });
+    const visibleBlockers = [
+      ...new Set([...visibleCaptchaNodes, ...visibleLoginForms]),
+    ];
 
-    if (!hasCaptchaChallenge && !hasLoginForm) {
+    if (visibleBlockers.length === 0) {
       return undefined;
     }
 
-    const hasNormalContent = $(
-      "main, article, [role='main'], .rank-box, .book-information, .book-content-wrap",
+    const hasIndependentNormalContent = $(
+      "article, .rank-box, .book-information, .book-content-wrap",
     )
       .toArray()
       .some((node) => {
@@ -354,25 +362,42 @@ export class QidianClient {
           return false;
         }
 
+        const intersectsBlocker = visibleBlockers.some(
+          (blocker) =>
+            blocker === node ||
+            $.contains(node, blocker) ||
+            $.contains(blocker, node),
+        );
+
+        if (intersectsBlocker) {
+          return false;
+        }
+
         const content = $(node).clone();
-        content.find("form").remove();
         content
-          .find("div, section")
-          .filter((_index, candidate) => isCaptchaNode(candidate))
+          .find("script, style, noscript, template")
+          .remove();
+        content
+          .find("*")
+          .filter((_index, candidate) => isExplicitlyHidden(candidate))
           .remove();
 
-        return content.text().replace(/\s+/g, "").length >= 8;
+        return (
+          content.text().trim().length > 0 ||
+          content.find("img[src], picture source[srcset], a[href*='/book/']")
+            .length > 0
+        );
       });
 
-    if (hasNormalContent) {
+    if (hasIndependentNormalContent) {
       return undefined;
     }
 
-    if (hasCaptchaChallenge) {
+    if (visibleCaptchaNodes.length > 0) {
       return "captcha";
     }
 
-    return hasLoginForm ? "login" : undefined;
+    return visibleLoginForms.length > 0 ? "login" : undefined;
   }
 
   private extractFinalUrl(request: unknown): string | undefined {
