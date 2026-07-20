@@ -1,15 +1,17 @@
 import { load } from "cheerio";
+import { hasChildren, isTag, isText, type AnyNode } from "domhandler";
 
-const BLOCK_BREAK_MARKER = "\uE000";
-const HTML_BREAK_MARKER = "\uE001";
-
-const BLOCK_ELEMENTS = [
+const BLOCK_ELEMENT_NAMES = new Set([
   "address",
   "article",
   "aside",
   "blockquote",
+  "caption",
+  "dd",
+  "details",
   "div",
   "dl",
+  "dt",
   "fieldset",
   "figcaption",
   "figure",
@@ -30,24 +32,110 @@ const BLOCK_ELEMENTS = [
   "p",
   "pre",
   "section",
+  "summary",
   "table",
+  "td",
+  "th",
   "tr",
   "ul",
-].join(",");
+]);
 
-function resolveHtmlBreaks(input: string): string {
-  return input.replace(/[\s\uE000\uE001]+/g, (sequence) => {
-    const htmlBreakCount = sequence.split(HTML_BREAK_MARKER).length - 1;
-    const hasBlockBreak = sequence.includes(BLOCK_BREAK_MARKER);
+const SKIPPED_ELEMENT_NAMES = new Set(["noscript", "script", "style"]);
 
-    if (htmlBreakCount === 0 && !hasBlockBreak) {
-      return sequence;
+type HtmlTextToken =
+  { type: "text"; value: string } | { type: "break"; source: "block" | "br" };
+
+function collectHtmlTextTokens(node: AnyNode, tokens: HtmlTextToken[]): void {
+  if (isText(node)) {
+    tokens.push({ type: "text", value: node.data.replace(/\s+/g, " ") });
+    return;
+  }
+
+  if (!hasChildren(node)) {
+    return;
+  }
+
+  const elementName = isTag(node) ? node.name.toLowerCase() : undefined;
+
+  if (elementName && SKIPPED_ELEMENT_NAMES.has(elementName)) {
+    return;
+  }
+
+  if (elementName === "br") {
+    tokens.push({ type: "break", source: "br" });
+    return;
+  }
+
+  const isBlock = elementName ? BLOCK_ELEMENT_NAMES.has(elementName) : false;
+
+  if (isBlock) {
+    tokens.push({ type: "break", source: "block" });
+  }
+
+  for (const child of node.children) {
+    collectHtmlTextTokens(child, tokens);
+  }
+
+  if (isBlock) {
+    tokens.push({ type: "break", source: "block" });
+  }
+}
+
+function renderHtmlTextTokens(tokens: HtmlTextToken[]): string {
+  let output = "";
+  let pendingSpace = false;
+  let htmlBreakCount = 0;
+  let hasBlockBreak = false;
+
+  const flushBreaks = (): void => {
+    const breakCount = Math.min(
+      2,
+      Math.max(htmlBreakCount, hasBlockBreak ? 1 : 0),
+    );
+
+    if (output && breakCount > 0) {
+      output = `${output.trimEnd()}${"\n".repeat(breakCount)}`;
     }
 
-    const breakCount = Math.min(2, Math.max(htmlBreakCount, 1));
+    htmlBreakCount = 0;
+    hasBlockBreak = false;
+  };
 
-    return "\n".repeat(breakCount);
-  });
+  for (const token of tokens) {
+    if (token.type === "break") {
+      pendingSpace = false;
+
+      if (token.source === "br") {
+        htmlBreakCount += 1;
+      } else {
+        hasBlockBreak = true;
+      }
+
+      continue;
+    }
+
+    const value = token.value;
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue) {
+      if (htmlBreakCount === 0 && !hasBlockBreak) {
+        pendingSpace = true;
+      }
+
+      continue;
+    }
+
+    flushBreaks();
+
+    if ((pendingSpace || value.startsWith(" ")) && output) {
+      output += " ";
+    }
+
+    output += trimmedValue;
+    pendingSpace = value.endsWith(" ");
+  }
+
+  return output.trim();
 }
 
 export function normalizePlainText(input: string): string {
@@ -63,12 +151,11 @@ export function normalizePlainText(input: string): string {
 
 export function normalizeHtmlText(input: string): string {
   const $ = load(input, null, false);
+  const tokens: HtmlTextToken[] = [];
 
-  $("script,style,noscript").remove();
-  $("br").replaceWith(HTML_BREAK_MARKER);
-  $(BLOCK_ELEMENTS).each((_, element) => {
-    $(element).before(BLOCK_BREAK_MARKER).after(BLOCK_BREAK_MARKER);
-  });
+  for (const node of $.root().toArray()) {
+    collectHtmlTextTokens(node, tokens);
+  }
 
-  return normalizePlainText(resolveHtmlBreaks($.root().text()));
+  return normalizePlainText(renderHtmlTextTokens(tokens));
 }

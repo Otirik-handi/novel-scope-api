@@ -21,7 +21,7 @@ describe("decodeBuffer", () => {
   it("rejects an explicitly unsupported charset", () => {
     expect(() =>
       decodeBuffer(Buffer.from("content"), "text/plain; charset=x-unknown"),
-    ).toThrow('Unsupported charset "x-unknown"');
+    ).toThrow(new Error("Unsupported charset"));
   });
 
   it.each(["X-Foo: bar; charset=gbk", "garbage; charset=gbk"])(
@@ -45,6 +45,36 @@ describe("decodeBuffer", () => {
   it("rejects an unsupported independent charset declaration", () => {
     expect(() =>
       decodeBuffer(Buffer.from("content"), "charset=x-unknown"),
-    ).toThrow('Unsupported charset "x-unknown"');
+    ).toThrow(new Error("Unsupported charset"));
+  });
+
+  it.each([
+    'text/html; note="a;b"; charset=gbk',
+    'text/html; note="a\\\"b"; charset=gbk',
+    "text/html; charset=gbk;",
+    "text/html; broken; charset=gbk",
+    "application/x!#$%&'*+-.^_`|~; charset=gbk",
+  ])("decodes charset from a valid MIME declaration: %s", (declaration) => {
+    const source = iconv.encode("MIME 参数", "gbk");
+
+    expect(decodeBuffer(source, declaration)).toBe("MIME 参数");
+  });
+
+  it("does not let a broken parameter hide an unsupported charset", () => {
+    expect(() =>
+      decodeBuffer(
+        Buffer.from("content"),
+        "text/html; charset=x-unknown; broken",
+      ),
+    ).toThrow(new Error("Unsupported charset"));
+  });
+
+  it.each([
+    'charset="x-unknown\nInjected: yes"',
+    `charset=x-${"a".repeat(500)}`,
+  ])("does not expose an unsupported charset in errors", (declaration) => {
+    expect(() => decodeBuffer(Buffer.from("content"), declaration)).toThrow(
+      new Error("Unsupported charset"),
+    );
   });
 });

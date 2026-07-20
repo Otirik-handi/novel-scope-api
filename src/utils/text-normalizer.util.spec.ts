@@ -47,4 +47,39 @@ describe("normalizeHtmlText", () => {
 
     expect(normalizeHtmlText(html)).toBe("A\n\nB\nC");
   });
+
+  it("collapses source newlines inside a block to spaces", () => {
+    expect(normalizeHtmlText("<p>A\nB</p>")).toBe("A B");
+  });
+
+  it("does not turn indentation around inline elements into line breaks", () => {
+    const html = "<p>Alpha\n  <strong>Beta</strong>\n  Gamma</p>";
+
+    expect(normalizeHtmlText(html)).toBe("Alpha Beta Gamma");
+  });
+
+  it("preserves private-use characters in visible text", () => {
+    expect(normalizeHtmlText("<p>&#xE000; &#xE001;</p>")).toBe("\uE000 \uE001");
+  });
+
+  it("separates definition terms, descriptions, and detail summaries", () => {
+    const html =
+      "<dl><dt>Term</dt><dd>Description</dd></dl><details><summary>More</summary>Detail</details>";
+
+    expect(normalizeHtmlText(html)).toBe("Term\nDescription\nMore\nDetail");
+  });
+
+  it("separates table captions, headers, and cells", () => {
+    const html =
+      "<table><caption>Stats</caption><tr><th>Name</th><th>Value</th></tr><tr><td>A</td><td>1</td></tr></table>";
+
+    expect(normalizeHtmlText(html)).toBe("Stats\nName\nValue\nA\n1");
+  });
+
+  it("separates nested list items without extra blank lines", () => {
+    const html =
+      "<ul><li>Outer<ul><li>Inner one</li><li>Inner two</li></ul></li><li>Next</li></ul>";
+
+    expect(normalizeHtmlText(html)).toBe("Outer\nInner one\nInner two\nNext");
+  });
 });
