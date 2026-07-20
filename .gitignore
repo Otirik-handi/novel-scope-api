@@ -1,2 +1,5 @@
 node_modules
 .worktrees/
+.env
+coverage/
+dist/
