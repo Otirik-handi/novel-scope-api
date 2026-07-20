@@ -1,8 +1,8 @@
-import { NotFoundException } from "@nestjs/common";
+import { Logger, NotFoundException } from "@nestjs/common";
 import type { CrawlersService } from "../crawlers/crawlers.service";
 import type { CrawledRanking } from "../crawlers/interfaces";
 import type { RankingsRepository } from "./rankings.repository";
-import { RankingsService } from "./rankings.service";
+import { RankingIntegrityError, RankingsService } from "./rankings.service";
 
 const snapshot = {
   id: "snapshot-1",
@@ -36,6 +36,10 @@ function createSubject() {
 }
 
 describe("RankingsService", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe("getLatest", () => {
     it("returns the latest stored snapshot without selecting or calling a crawler", async () => {
       const { service, repository, rankingCrawler, crawlersService } =
@@ -108,11 +112,33 @@ describe("RankingsService", () => {
       expect(repository.saveSnapshot).toHaveBeenCalledTimes(1);
       expect(repository.findLatest).not.toHaveBeenCalled();
     });
+
+    it.each(["", "   "])(
+      "does not persist a ranking with a blank source URL (%j)",
+      async (sourceUrl) => {
+        const { service, repository, rankingCrawler } = createSubject();
+        rankingCrawler.crawl.mockResolvedValue({
+          ...makeCrawledRanking(),
+          sourceUrl,
+        });
+
+        await expect(
+          service.refresh("qidian", "yuepiao"),
+        ).rejects.toBeInstanceOf(RankingIntegrityError);
+        expect(repository.saveSnapshot).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe("refreshAll", () => {
     it("refreshes all four rank types strictly in order and continues after a failure", async () => {
       const { service, repository, rankingCrawler } = createSubject();
+      const sensitiveError = new Error(
+        "database failed at C:\\deploy\\secrets\\database.json for postgres://admin:secret@db/internal",
+      );
+      const loggerError = jest
+        .spyOn(Logger.prototype, "error")
+        .mockImplementation();
       const events: string[] = [];
       let activeCrawls = 0;
       let maximumActiveCrawls = 0;
@@ -125,7 +151,7 @@ describe("RankingsService", () => {
         events.push(`end:${rankType}`);
 
         if (rankType === "hotsales") {
-          throw new Error("blocked");
+          throw sensitiveError;
         }
 
         return makeCrawledRanking(rankType);
@@ -160,8 +186,14 @@ describe("RankingsService", () => {
       expect(result[1]).toEqual({
         rankType: "hotsales",
         success: false,
-        error: "blocked",
+        error: "RANKING_REFRESH_FAILED",
       });
+      expect(JSON.stringify(result)).not.toContain(sensitiveError.message);
+      expect(() => JSON.stringify(result)).not.toThrow();
+      expect(loggerError).toHaveBeenCalledWith(
+        "Failed to refresh ranking qidian/hotsales",
+        sensitiveError.stack,
+      );
       expect(repository.saveSnapshot).toHaveBeenCalledTimes(3);
     });
   });

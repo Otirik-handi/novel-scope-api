@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import {
   RANK_TYPES,
   type CrawledRanking,
@@ -12,12 +12,16 @@ import type {
 } from "./interfaces/ranking.interface";
 import { RankingsRepository } from "./rankings.repository";
 
+export const RANKING_REFRESH_FAILED = "RANKING_REFRESH_FAILED";
+
 export class RankingIntegrityError extends Error {
   override readonly name = "RankingIntegrityError";
 }
 
 @Injectable()
 export class RankingsService {
+  private readonly logger = new Logger(RankingsService.name);
+
   constructor(
     private readonly repository: RankingsRepository,
     private readonly crawlersService: CrawlersService,
@@ -56,10 +60,14 @@ export class RankingsService {
         const snapshot = await this.refresh(platform, rankType);
         results.push({ rankType, success: true, snapshot });
       } catch (error) {
+        this.logger.error(
+          `Failed to refresh ranking ${platform}/${rankType}`,
+          error instanceof Error ? error.stack : undefined,
+        );
         results.push({
           rankType,
           success: false,
-          error: this.errorMessage(error),
+          error: RANKING_REFRESH_FAILED,
         });
       }
     }
@@ -76,6 +84,13 @@ export class RankingsService {
       throw new RankingIntegrityError(
         "Crawler returned a ranking for a different platform or rank type",
       );
+    }
+
+    if (
+      typeof ranking.sourceUrl !== "string" ||
+      ranking.sourceUrl.trim() === ""
+    ) {
+      throw new RankingIntegrityError("Ranking source URL is required");
     }
 
     if (ranking.items.length !== 10) {
@@ -107,9 +122,5 @@ export class RankingsService {
         "Ranking must contain unique book IDs and ranks",
       );
     }
-  }
-
-  private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : "Unknown refresh error";
   }
 }
