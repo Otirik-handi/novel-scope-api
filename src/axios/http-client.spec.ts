@@ -157,6 +157,18 @@ describe('HttpClient', () => {
     expect(axiosInstance.get).toHaveBeenCalledTimes(1);
   });
 
+  it('does not retry a cancelled GET request', async () => {
+    const failure = new AxiosError('cancelled', 'ERR_CANCELED', { method: 'get' } as never);
+    axiosInstance.get.mockRejectedValue(failure);
+    const client = new TestHttpClient(
+      { get: jest.fn((key: string) => key === 'httpRetries' ? 2 : undefined) } as never,
+      jest.fn().mockResolvedValue(undefined),
+    );
+
+    await expect(client.request(url)).rejects.toMatchObject({ cause: failure });
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+  });
+
   it('does not retry a response status outside the 5xx range', async () => {
     const response = { status: 600 } as AxiosResponse;
     const failure = new AxiosError('unknown status', undefined, undefined, undefined, response);

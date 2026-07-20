@@ -78,6 +78,7 @@ export abstract class HttpClient {
 
   private isRetryable(error: unknown): error is AxiosError {
     if (!axios.isAxiosError(error)) return false;
+    if (error.code === 'ERR_CANCELED') return false;
 
     const status = error.response?.status ?? error.status;
     if (status === 403) return false;
