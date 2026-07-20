@@ -1,8 +1,8 @@
 import { registerAs } from "@nestjs/config";
-import { validateEnvironment } from "./env.validation";
+import { validateAppEnvironment } from "./env.validation";
 
 export default registerAs("app", () => {
-  const environment = validateEnvironment(process.env);
+  const environment = validateAppEnvironment(process.env);
 
   return {
     port: environment.PORT,

@@ -8,15 +8,26 @@ export const environmentDefaults = {
   RANKING_REFRESH_TIME_ZONE: "Asia/Shanghai",
 } as const;
 
-export interface EnvironmentVariables {
-  DATABASE_URL: string;
-  QIDIAN_USER_AGENT: string;
+export interface AppEnvironmentVariables {
   PORT: number;
-  QIDIAN_REQUEST_TIMEOUT_MS: number;
   BOOK_DETAIL_TTL_HOURS: number;
   RANKING_REFRESH_CRON: string;
   RANKING_REFRESH_TIME_ZONE: string;
 }
+
+export interface DatabaseEnvironmentVariables {
+  DATABASE_URL: string;
+}
+
+export interface CrawlerEnvironmentVariables {
+  QIDIAN_USER_AGENT: string;
+  QIDIAN_REQUEST_TIMEOUT_MS: number;
+}
+
+export interface EnvironmentVariables
+  extends AppEnvironmentVariables,
+    DatabaseEnvironmentVariables,
+    CrawlerEnvironmentVariables {}
 
 function requireNonEmptyString(
   environment: Record<string, unknown>,
@@ -86,6 +97,10 @@ function validateCronExpression(value: string): void {
 }
 
 function validateTimeZone(value: string): void {
+  if (value !== "UTC" && !value.includes("/")) {
+    throw new Error("RANKING_REFRESH_TIME_ZONE must be a valid IANA time zone");
+  }
+
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
   } catch {
@@ -93,9 +108,9 @@ function validateTimeZone(value: string): void {
   }
 }
 
-export function validateEnvironment(
+export function validateAppEnvironment(
   environment: Record<string, unknown>,
-): EnvironmentVariables {
+): AppEnvironmentVariables {
   const rankingRefreshCron = readOptionalString(
     environment,
     "RANKING_REFRESH_CRON",
@@ -111,18 +126,11 @@ export function validateEnvironment(
   validateTimeZone(rankingRefreshTimeZone);
 
   return {
-    DATABASE_URL: requireNonEmptyString(environment, "DATABASE_URL"),
-    QIDIAN_USER_AGENT: requireNonEmptyString(environment, "QIDIAN_USER_AGENT"),
     PORT: readPositiveInteger(
       environment,
       "PORT",
       environmentDefaults.PORT,
       65_535,
-    ),
-    QIDIAN_REQUEST_TIMEOUT_MS: readPositiveInteger(
-      environment,
-      "QIDIAN_REQUEST_TIMEOUT_MS",
-      environmentDefaults.QIDIAN_REQUEST_TIMEOUT_MS,
     ),
     BOOK_DETAIL_TTL_HOURS: readPositiveInteger(
       environment,
@@ -131,5 +139,37 @@ export function validateEnvironment(
     ),
     RANKING_REFRESH_CRON: rankingRefreshCron,
     RANKING_REFRESH_TIME_ZONE: rankingRefreshTimeZone,
+  };
+}
+
+export function validateDatabaseEnvironment(
+  environment: Record<string, unknown>,
+): DatabaseEnvironmentVariables {
+  return {
+    DATABASE_URL: requireNonEmptyString(environment, "DATABASE_URL"),
+  };
+}
+
+export function validateCrawlerEnvironment(
+  environment: Record<string, unknown>,
+): CrawlerEnvironmentVariables {
+  return {
+    QIDIAN_USER_AGENT: requireNonEmptyString(environment, "QIDIAN_USER_AGENT"),
+    QIDIAN_REQUEST_TIMEOUT_MS: readPositiveInteger(
+      environment,
+      "QIDIAN_REQUEST_TIMEOUT_MS",
+      environmentDefaults.QIDIAN_REQUEST_TIMEOUT_MS,
+      2_147_483_647,
+    ),
+  };
+}
+
+export function validateEnvironment(
+  environment: Record<string, unknown>,
+): EnvironmentVariables {
+  return {
+    ...validateDatabaseEnvironment(environment),
+    ...validateCrawlerEnvironment(environment),
+    ...validateAppEnvironment(environment),
   };
 }

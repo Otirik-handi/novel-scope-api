@@ -1,5 +1,8 @@
 import { ConfigService } from "@nestjs/config";
 import { Test, type TestingModule } from "@nestjs/testing";
+import appConfig from "./app.config";
+import crawlerConfig from "./crawler.config";
+import databaseConfig from "./database.config";
 import { validateEnvironment } from "./env.validation";
 
 const requiredEnvironment = {
@@ -7,7 +10,94 @@ const requiredEnvironment = {
   QIDIAN_USER_AGENT: "NovelScope/0.1",
 };
 
+const configurationEnvironmentKeys = [
+  "DATABASE_URL",
+  "QIDIAN_USER_AGENT",
+  "PORT",
+  "QIDIAN_REQUEST_TIMEOUT_MS",
+  "BOOK_DETAIL_TTL_HOURS",
+  "RANKING_REFRESH_CRON",
+  "RANKING_REFRESH_TIME_ZONE",
+] as const;
+
+function withEnvironment<T>(
+  environment: Record<string, string>,
+  action: () => T,
+): T {
+  const originalEnvironment = Object.fromEntries(
+    configurationEnvironmentKeys.map((key) => [key, process.env[key]]),
+  );
+
+  for (const key of configurationEnvironmentKeys) {
+    delete process.env[key];
+  }
+
+  Object.assign(process.env, environment);
+
+  try {
+    return action();
+  } finally {
+    for (const key of configurationEnvironmentKeys) {
+      const value = originalEnvironment[key];
+
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 describe("validateEnvironment", () => {
+  it("loads app configuration independently", () => {
+    withEnvironment(
+      {
+        PORT: "3100",
+        BOOK_DETAIL_TTL_HOURS: "6",
+        RANKING_REFRESH_CRON: " 0 0 7 * * * ",
+        RANKING_REFRESH_TIME_ZONE: " Asia/Shanghai ",
+      },
+      () => {
+        expect(appConfig()).toEqual({
+          port: 3100,
+          bookDetailTtlHours: 6,
+          rankingRefreshCron: "0 0 7 * * *",
+          rankingRefreshTimeZone: "Asia/Shanghai",
+        });
+      },
+    );
+  });
+
+  it("loads database configuration independently", () => {
+    withEnvironment(
+      {
+        DATABASE_URL:
+          "  postgresql://postgres:postgres@localhost:5432/novel_scope  ",
+      },
+      () => {
+        expect(databaseConfig()).toEqual({
+          url: "postgresql://postgres:postgres@localhost:5432/novel_scope",
+        });
+      },
+    );
+  });
+
+  it("loads crawler configuration independently", () => {
+    withEnvironment(
+      {
+        QIDIAN_USER_AGENT: "  NovelScope/0.1  ",
+        QIDIAN_REQUEST_TIMEOUT_MS: "15000",
+      },
+      () => {
+        expect(crawlerConfig()).toEqual({
+          qidianUserAgent: "NovelScope/0.1",
+          requestTimeoutMs: 15_000,
+        });
+      },
+    );
+  });
+
   it.each(["DATABASE_URL", "QIDIAN_USER_AGENT"] as const)(
     "requires %s",
     (key) => {
@@ -61,6 +151,22 @@ describe("validateEnvironment", () => {
     ).toThrow(`${key} must be a positive integer`);
   });
 
+  it("limits request timeout to the maximum Node timer delay", () => {
+    expect(
+      validateEnvironment({
+        ...requiredEnvironment,
+        QIDIAN_REQUEST_TIMEOUT_MS: "2147483647",
+      }).QIDIAN_REQUEST_TIMEOUT_MS,
+    ).toBe(2_147_483_647);
+
+    expect(() =>
+      validateEnvironment({
+        ...requiredEnvironment,
+        QIDIAN_REQUEST_TIMEOUT_MS: "2147483648",
+      }),
+    ).toThrow("QIDIAN_REQUEST_TIMEOUT_MS must be a positive integer");
+  });
+
   it("rejects an invalid ranking refresh cron expression", () => {
     expect(() =>
       validateEnvironment({
@@ -77,6 +183,24 @@ describe("validateEnvironment", () => {
         RANKING_REFRESH_TIME_ZONE: "Invalid/TimeZone",
       }),
     ).toThrow("RANKING_REFRESH_TIME_ZONE must be a valid IANA time zone");
+  });
+
+  it("accepts UTC and rejects ambiguous time zone abbreviations", () => {
+    expect(
+      validateEnvironment({
+        ...requiredEnvironment,
+        RANKING_REFRESH_TIME_ZONE: "UTC",
+      }).RANKING_REFRESH_TIME_ZONE,
+    ).toBe("UTC");
+
+    for (const timeZone of ["CST", "PST"]) {
+      expect(() =>
+        validateEnvironment({
+          ...requiredEnvironment,
+          RANKING_REFRESH_TIME_ZONE: timeZone,
+        }),
+      ).toThrow("RANKING_REFRESH_TIME_ZONE must be a valid IANA time zone");
+    }
   });
 
   it("assembles named configuration from normalized environment values", async () => {

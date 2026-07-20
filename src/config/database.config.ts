@@ -1,8 +1,8 @@
 import { registerAs } from "@nestjs/config";
-import { validateEnvironment } from "./env.validation";
+import { validateDatabaseEnvironment } from "./env.validation";
 
 export default registerAs("database", () => {
-  const environment = validateEnvironment(process.env);
+  const environment = validateDatabaseEnvironment(process.env);
 
   return {
     url: environment.DATABASE_URL,

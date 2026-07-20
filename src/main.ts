@@ -1,11 +1,14 @@
 import { ValidationPipe } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
+import { type ConfigType } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
+import appConfig from "./config/app.config";
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
-  const configService = app.get(ConfigService);
+  const applicationConfig = app.get<ConfigType<typeof appConfig>>(
+    appConfig.KEY,
+  );
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -14,7 +17,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  await app.listen(configService.getOrThrow<number>("app.port"));
+  await app.listen(applicationConfig.port);
 }
 
 void bootstrap();
