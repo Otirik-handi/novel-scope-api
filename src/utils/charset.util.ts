@@ -25,6 +25,14 @@ function extractCharset(declaration?: string): string {
     return bareCharset;
   }
 
+  const independentCharset = normalizedDeclaration.match(PARAMETER_PATTERN);
+
+  if (independentCharset?.[1].toLowerCase() === "charset") {
+    return (
+      independentCharset[2] ?? independentCharset[3] ?? independentCharset[4]
+    );
+  }
+
   const [mimeType, ...parameterDeclarations] = normalizedDeclaration
     .split(";")
     .map((part) => part.trim());

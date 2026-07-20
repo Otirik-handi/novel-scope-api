@@ -32,4 +32,19 @@ describe("decodeBuffer", () => {
       expect(decodeBuffer(source, value)).toBe("UTF-8 内容");
     },
   );
+
+  it.each(['charset="gbk"', " CHARSET = GBK "])(
+    "decodes an independent charset declaration: %s",
+    (declaration) => {
+      const source = iconv.encode("独立声明", "gbk");
+
+      expect(decodeBuffer(source, declaration)).toBe("独立声明");
+    },
+  );
+
+  it("rejects an unsupported independent charset declaration", () => {
+    expect(() =>
+      decodeBuffer(Buffer.from("content"), "charset=x-unknown"),
+    ).toThrow('Unsupported charset "x-unknown"');
+  });
 });
