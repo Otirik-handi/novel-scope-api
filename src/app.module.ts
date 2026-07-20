@@ -4,6 +4,7 @@ import appConfig from "./config/app.config";
 import crawlerConfig from "./config/crawler.config";
 import databaseConfig from "./config/database.config";
 import { validateEnvironment } from "./config/env.validation";
+import { DatabaseModule } from "./shared/database/database.module";
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { validateEnvironment } from "./config/env.validation";
       load: [appConfig, databaseConfig, crawlerConfig],
       validate: validateEnvironment,
     }),
+    DatabaseModule,
   ],
 })
 export class AppModule {}

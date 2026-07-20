@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Book {
+  id             String        @id @default(uuid()) @db.Uuid
+  platform       String
+  externalBookId String
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+  detail         BookDetail?
+  rankingItems   RankingItem[]
+
+  @@unique([platform, externalBookId])
+}
+
+model BookDetail {
+  bookId      String   @id @db.Uuid
+  title       String
+  author      String
+  description String?
+  coverUrl    String?
+  genres      String[] @default([])
+  bookStatus  String?
+  wordCount   Int?
+  metadata    Json     @default("{}") @db.JsonB
+  sourceUrl   String
+  fetchedAt   DateTime @db.Timestamptz(3)
+  expiresAt   DateTime @db.Timestamptz(3)
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+}
+
+model RankingSnapshot {
+  id        String        @id @default(uuid()) @db.Uuid
+  platform  String
+  rankType  String
+  sourceUrl String
+  fetchedAt DateTime      @db.Timestamptz(3)
+  createdAt DateTime      @default(now()) @db.Timestamptz(3)
+  items     RankingItem[]
+
+  @@index([platform, rankType, fetchedAt(sort: Desc)])
+}
+
+model RankingItem {
+  id             String          @id @default(uuid()) @db.Uuid
+  snapshotId     String          @db.Uuid
+  bookId         String          @db.Uuid
+  rank           Int
+  externalBookId String
+  title          String
+  author         String
+  coverUrl       String?
+  sourceUrl      String
+  metrics        Json            @default("{}") @db.JsonB
+  snapshot       RankingSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  book           Book            @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, rank])
+  @@unique([snapshotId, externalBookId])
+  @@index([bookId])
+}
