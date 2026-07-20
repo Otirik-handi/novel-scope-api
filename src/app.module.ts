@@ -5,7 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { validateEnvironment } from './config/env.validation';
 import { HealthController } from './health.controller';
-import { PrismaModule } from './prisma/prisma.module';
+import { PrismaModule } from './db/prisma.module';
 import { requestContextMiddleware } from './request-context';
 import { appLogger, requestCompletionLogger } from './structured-logger';
 import { RankingsModule } from './api/rankings.module';

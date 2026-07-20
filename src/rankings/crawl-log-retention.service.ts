@@ -2,7 +2,7 @@ import { Inject, Injectable, OnApplicationBootstrap, Optional } from '@nestjs/co
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../db/prisma.service';
 
 export const CRAWL_LOG_RETENTION_CLOCK = Symbol('CRAWL_LOG_RETENTION_CLOCK');
 

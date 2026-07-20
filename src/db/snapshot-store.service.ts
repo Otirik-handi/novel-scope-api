@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from './prisma.service';
 import { CrawlErrorCode } from '../structured-logger';
-import { RankingKey, RankingSnapshot } from './domain/ranking.types';
+import { RankingKey, RankingSnapshot } from '../types/ranking.types';
 
 export function crawlErrorCode(error: unknown): CrawlErrorCode {
   if (error && typeof error === 'object' && 'status' in error && typeof error.status === 'number') return 'UPSTREAM_ERROR';

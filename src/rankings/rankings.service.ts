@@ -1,8 +1,8 @@
 import { BadGatewayException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
-import { RankingProvider } from './domain/ranking-provider';
-import { RankingKey, RankingSnapshot } from './domain/ranking.types';
-import { crawlErrorCode, SnapshotStoreService } from './snapshot-store.service';
-import { RANKING_LOCK, RankingLock } from './ranking-lock.service';
+import { RankingProvider } from '../types/ranking-provider';
+import { RankingKey, RankingSnapshot } from '../types/ranking.types';
+import { crawlErrorCode, SnapshotStoreService } from '../db/snapshot-store.service';
+import { RANKING_LOCK, RankingLock } from '../db/ranking-lock.service';
 import { appLogger, type CrawlErrorCode, StructuredLogger } from '../structured-logger';
 import { mapWithConcurrency } from './concurrency';
 

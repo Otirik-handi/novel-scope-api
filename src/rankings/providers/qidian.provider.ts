@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import * as cheerio from 'cheerio';
-import { RankingProvider } from '../domain/ranking-provider';
-import { RankingItem, RankingKey, RankingSnapshot } from '../domain/ranking.types';
-import { isSupportedRank } from '../ranking-catalog';
+import { RankingProvider } from '../../types/ranking-provider';
+import { RankingItem, RankingKey, RankingSnapshot } from '../../types/ranking.types';
+import { isSupportedRank } from '../../types/ranking-catalog';
 import { RankingHttpClient } from './ranking-http.client';
 
 export class SourceParseError extends Error {}

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import * as cheerio from 'cheerio';
-import { FetchedBookDetail } from '../domain/book-detail.types';
+import { FetchedBookDetail } from '../../types/book-detail.types';
 import { SourceParseError } from './qidian.provider';
 import { RankingHttpClient } from './ranking-http.client';
 

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { BookDetailSnapshot, FetchedBookDetail } from './domain/book-detail.types';
+import { PrismaService } from './prisma.service';
+import { BookDetailSnapshot, FetchedBookDetail } from '../types/book-detail.types';
 
 export type BookDetailCrawl = { status: 'success' | 'failed' | 'skipped'; errorCode?: 'UPSTREAM_ERROR' | 'TIMEOUT' | 'NETWORK_ERROR' | 'UNKNOWN_ERROR'; errorMessage?: string };
 

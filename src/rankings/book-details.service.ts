@@ -1,10 +1,10 @@
 import { BadGatewayException, GatewayTimeoutException, Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { BookDetailStoreService } from './book-detail-store.service';
-import { BookDetailCrawl } from './book-detail-store.service';
-import { BookDetailSnapshot } from './domain/book-detail.types';
+import { BookDetailStoreService } from '../db/book-detail-store.service';
+import { BookDetailCrawl } from '../db/book-detail-store.service';
+import { BookDetailSnapshot } from '../types/book-detail.types';
 import { QidianBookDetailProvider } from './providers/qidian-book-detail.provider';
-import { BOOK_DETAIL_LOCK, BookDetailLock } from './book-detail-lock.service';
+import { BOOK_DETAIL_LOCK, BookDetailLock } from '../db/book-detail-lock.service';
 import { appLogger, CrawlErrorCode, StructuredLogger } from '../structured-logger';
 
 export const BOOK_DETAILS_CLOCK = Symbol('BOOK_DETAILS_CLOCK');
