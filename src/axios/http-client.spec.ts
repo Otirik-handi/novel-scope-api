@@ -118,6 +118,19 @@ describe('HttpClient', () => {
     expect(axiosInstance.get).toHaveBeenCalledTimes(1);
   });
 
+  it('does not retry a forbidden response even when Axios reports a timeout code', async () => {
+    const response = { status: 403 } as AxiosResponse;
+    const failure = new AxiosError('forbidden timeout', 'ECONNABORTED', undefined, undefined, response);
+    axiosInstance.get.mockRejectedValue(failure);
+    const client = new TestHttpClient(
+      { get: jest.fn((key: string) => key === 'httpRetries' ? 2 : undefined) } as never,
+      jest.fn().mockResolvedValue(undefined),
+    );
+
+    await expect(client.request(url)).rejects.toMatchObject({ status: 403, cause: failure });
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+  });
+
   it('does not retry a denied network error without a response status', async () => {
     const failure = new AxiosError('host not found', 'ENOTFOUND');
     axiosInstance.get.mockRejectedValue(failure);
@@ -127,6 +140,31 @@ describe('HttpClient', () => {
     );
 
     await expect(client.request(url)).rejects.toMatchObject({ cause: failure });
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a local Axios option validation error', async () => {
+    const failure = new AxiosError('invalid option value', 'ERR_BAD_OPTION_VALUE');
+    axiosInstance.get.mockRejectedValue(failure);
+    const client = new TestHttpClient(
+      { get: jest.fn((key: string) => key === 'httpRetries' ? 2 : undefined) } as never,
+      jest.fn().mockResolvedValue(undefined),
+    );
+
+    await expect(client.request(url)).rejects.toMatchObject({ cause: failure });
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a response status outside the 5xx range', async () => {
+    const response = { status: 600 } as AxiosResponse;
+    const failure = new AxiosError('unknown status', undefined, undefined, undefined, response);
+    axiosInstance.get.mockRejectedValue(failure);
+    const client = new TestHttpClient(
+      { get: jest.fn((key: string) => key === 'httpRetries' ? 2 : undefined) } as never,
+      jest.fn().mockResolvedValue(undefined),
+    );
+
+    await expect(client.request(url)).rejects.toMatchObject({ status: 600, cause: failure });
     expect(axiosInstance.get).toHaveBeenCalledTimes(1);
   });
 

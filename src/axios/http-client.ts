@@ -15,6 +15,12 @@ export type HttpRequestOptions = {
 export type HttpRequestDelay = (milliseconds: number) => Promise<void>;
 
 const timeoutErrorCodes = new Set(['ECONNABORTED', 'ETIMEDOUT']);
+const localAxiosErrorCodes = new Set([
+  'ERR_BAD_OPTION',
+  'ERR_BAD_OPTION_VALUE',
+  'ERR_INVALID_URL',
+  'ERR_NOT_SUPPORT',
+]);
 const networkErrorCodeDenyList = new Set([
   'ENOTFOUND',
   'ENETUNREACH',
@@ -106,8 +112,10 @@ export abstract class HttpClient {
     if (!axios.isAxiosError(error)) return false;
 
     const status = error.response?.status ?? error.status;
+    if (status === 403) return false;
+    if (localAxiosErrorCodes.has(error.code ?? '')) return false;
     if (timeoutErrorCodes.has(error.code ?? '')) return true;
-    if (status === 408 || status === 429 || (status !== undefined && status >= 500)) return true;
+    if (status === 408 || status === 429 || (status !== undefined && status >= 500 && status <= 599)) return true;
 
     return this.isNetworkError(error) || this.isIdempotentRequestError(error);
   }
