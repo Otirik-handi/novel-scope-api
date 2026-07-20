@@ -5,7 +5,10 @@ import type {
   RankType,
 } from "../../interfaces";
 import { parseDisplayedNumber } from "../../../utils/number-parser.util";
-import { normalizePlainText } from "../../../utils/text-normalizer.util";
+import {
+  normalizeHtmlNodesText,
+  normalizePlainText,
+} from "../../../utils/text-normalizer.util";
 import { QIDIAN_BASE_URL } from "../qidian.constants";
 
 const RANKING_ITEM_SELECTOR = [
@@ -46,13 +49,15 @@ export class QidianRankingParser {
         .first();
       const href = bookLink.attr("href")?.trim();
       const source = href ? this.parseBookSource(href) : null;
-      const title = normalizePlainText(bookLink.text());
+      const title =
+        normalizeHtmlNodesText(bookLink.contents().toArray()) ?? "";
       const authorElement = element
         .find(".author .name, .author a, .author span, .writer, [data-author]")
         .first();
-      const author = normalizePlainText(
-        authorElement.attr("data-author") ?? authorElement.text(),
-      );
+      const authorAttribute = authorElement.attr("data-author");
+      const author = authorAttribute
+        ? normalizePlainText(authorAttribute)
+        : (normalizeHtmlNodesText(authorElement.contents().toArray()) ?? "");
 
       if (!source || !title || !author) {
         return null;
@@ -65,8 +70,10 @@ export class QidianRankingParser {
       const metricElement = element
         .find(".score, .rank-score, [data-metric]")
         .first();
+      const metricAttribute = metricElement.attr("data-metric");
       const metricValue = parseDisplayedNumber(
-        metricElement.attr("data-metric") ?? metricElement.text(),
+        metricAttribute ??
+          normalizeHtmlNodesText(metricElement.contents().toArray()),
       );
 
       return {
@@ -109,7 +116,7 @@ export class QidianRankingParser {
   ): { externalBookId: string; sourceUrl: string } | null {
     try {
       const url = new URL(href, QIDIAN_BASE_URL);
-      const match = url.pathname.match(/^\/book\/(\d+)(?:\/|$)/);
+      const match = url.pathname.match(/^\/book\/(\d+)\/?$/);
 
       if (url.origin !== QIDIAN_BASE_URL || !match) {
         return null;

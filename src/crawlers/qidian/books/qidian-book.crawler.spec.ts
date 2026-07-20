@@ -56,6 +56,37 @@ describe("QidianBookCrawler", () => {
     );
   });
 
+  it("rejects a chapter final URL for the requested Qidian book", async () => {
+    const page: QidianPage = {
+      html: fixture("book-embedded-json.html"),
+      sourceUrl: "https://www.qidian.com/book/3100000001/chapter/99",
+    };
+    const fetchPage = jest.fn<Promise<QidianPage>, [string]>();
+    fetchPage.mockResolvedValue(page);
+    const crawler = new QidianBookCrawler({ fetchPage });
+
+    await expect(crawler.crawl("3100000001")).rejects.toThrow(
+      "Qidian book final URL does not match requested book ID",
+    );
+  });
+
+  it.each([
+    "https://example.com/book/3100000001/",
+    "https://reader:secret@www.qidian.com/book/3100000001/",
+  ])("rejects an untrusted book final URL: %s", async (sourceUrl) => {
+    const page: QidianPage = {
+      html: fixture("book-embedded-json.html"),
+      sourceUrl,
+    };
+    const fetchPage = jest.fn<Promise<QidianPage>, [string]>();
+    fetchPage.mockResolvedValue(page);
+    const crawler = new QidianBookCrawler({ fetchPage });
+
+    await expect(crawler.crawl("3100000001")).rejects.toThrow(
+      "Qidian book final URL does not match requested book ID",
+    );
+  });
+
   it.each(["", " 3100000001", "3100000001/chapters", "abc"])(
     "rejects an invalid Qidian book ID before requesting it: %j",
     async (externalBookId) => {

@@ -104,4 +104,82 @@ describe("QidianRankingParser", () => {
       }),
     ).toThrow("Qidian ranking must contain exactly 10 unique complete items");
   });
+
+  it("rejects a chapter link used as a ranking book title", () => {
+    const items = Array.from({ length: 10 }, (_, index) => {
+      const bookId = `250000000${index}`;
+      const href =
+        index === 0 ? `/book/${bookId}/chapter/99` : `/book/${bookId}/`;
+
+      return `<li><h2><a href="${href}">严格路径小说 ${index}</a></h2><p class="author"><a>作者 ${index}</a></p></li>`;
+    }).join("");
+
+    expect(() =>
+      parser.parse({
+        html: `<ol class="book-img-text">${items}</ol>`,
+        rankType: "yuepiao",
+        sourceUrl: "https://www.qidian.com/rank/yuepiao/",
+        fetchedAt: FETCHED_AT,
+      }),
+    ).toThrow("Qidian ranking must contain exactly 10 unique complete items");
+  });
+
+  it("accepts relative and absolute strict book resource URLs", () => {
+    const items = Array.from({ length: 10 }, (_, index) => {
+      const bookId = `260000000${index}`;
+      const href =
+        index % 2 === 0
+          ? `/book/${bookId}`
+          : `https://www.qidian.com/book/${bookId}/?from=rank`;
+
+      return `<li><h2><a href="${href}">严格路径小说 ${index}</a></h2><p class="author"><a>作者 ${index}</a></p></li>`;
+    }).join("");
+
+    const result = parser.parse({
+      html: `<ol class="book-img-text">${items}</ol>`,
+      rankType: "yuepiao",
+      sourceUrl: "https://www.qidian.com/rank/yuepiao/",
+      fetchedAt: FETCHED_AT,
+    });
+
+    expect(result.items).toHaveLength(10);
+  });
+
+  it("reads a deeply nested ranking title without recursive overflow", () => {
+    const depth = 5_000;
+    const deepTitle = `${"<span>".repeat(depth)}深层榜单标题${"</span>".repeat(depth)}`;
+    const items = Array.from({ length: 10 }, (_, index) => {
+      const title = index === 0 ? deepTitle : `普通标题 ${index}`;
+
+      return `<li><h2><a href="/book/270000000${index}/">${title}</a></h2><p class="author"><a>作者 ${index}</a></p></li>`;
+    }).join("");
+
+    const result = parser.parse({
+      html: `<ol class="book-img-text">${items}</ol>`,
+      rankType: "yuepiao",
+      sourceUrl: "https://www.qidian.com/rank/yuepiao/",
+      fetchedAt: FETCHED_AT,
+    });
+
+    expect(result.items[0].title).toBe("深层榜单标题");
+  });
+
+  it("fails closed when ranking text exceeds the DOM depth budget", () => {
+    const depth = 9_000;
+    const deepTitle = `${"<span>".repeat(depth)}超限标题${"</span>".repeat(depth)}`;
+    const items = Array.from({ length: 10 }, (_, index) => {
+      const title = index === 0 ? deepTitle : `普通标题 ${index}`;
+
+      return `<li><h2><a href="/book/280000000${index}/">${title}</a></h2><p class="author"><a>作者 ${index}</a></p></li>`;
+    }).join("");
+
+    expect(() =>
+      parser.parse({
+        html: `<ol class="book-img-text">${items}</ol>`,
+        rankType: "yuepiao",
+        sourceUrl: "https://www.qidian.com/rank/yuepiao/",
+        fetchedAt: FETCHED_AT,
+      }),
+    ).toThrow("Qidian ranking must contain exactly 10 unique complete items");
+  });
 });

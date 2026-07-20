@@ -52,4 +52,21 @@ describe("QidianRankingCrawler", () => {
       "Qidian ranking final URL does not match requested rank type",
     );
   });
+
+  it.each([
+    "https://example.com/rank/yuepiao/",
+    "https://reader:secret@www.qidian.com/rank/yuepiao/",
+  ])("rejects an untrusted ranking final URL: %s", async (sourceUrl) => {
+    const page: QidianPage = {
+      html: fixture("ranking-yuepiao.html"),
+      sourceUrl,
+    };
+    const fetchPage = jest.fn<Promise<QidianPage>, [string]>();
+    fetchPage.mockResolvedValue(page);
+    const crawler = new QidianRankingCrawler({ fetchPage });
+
+    await expect(crawler.crawl("yuepiao")).rejects.toThrow(
+      "Qidian ranking final URL does not match requested rank type",
+    );
+  });
 });

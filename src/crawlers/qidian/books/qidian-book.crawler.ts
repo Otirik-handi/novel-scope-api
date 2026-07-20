@@ -1,6 +1,9 @@
 import type { BookCrawler, CrawledBook } from "../../interfaces";
 import type { QidianClient } from "../qidian.client";
-import { QIDIAN_BOOK_PATH_PREFIX } from "../qidian.constants";
+import {
+  QIDIAN_BASE_URL,
+  QIDIAN_BOOK_PATH_PREFIX,
+} from "../qidian.constants";
 import { QidianBookParser } from "./qidian-book.parser";
 
 export class QidianBookCrawlerError extends Error {
@@ -40,11 +43,15 @@ export class QidianBookCrawler implements BookCrawler {
     externalBookId: string,
   ): boolean {
     try {
-      const match = new URL(sourceUrl).pathname.match(
-        /^\/book\/(\d+)(?:\/|$)/,
-      );
+      const url = new URL(sourceUrl);
+      const match = url.pathname.match(/^\/book\/(\d+)\/?$/);
 
-      return match?.[1] === externalBookId;
+      return (
+        url.origin === QIDIAN_BASE_URL &&
+        url.username === "" &&
+        url.password === "" &&
+        match?.[1] === externalBookId
+      );
     } catch {
       return false;
     }

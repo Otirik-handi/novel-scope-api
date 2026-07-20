@@ -1,4 +1,8 @@
 import { load } from "cheerio";
+import type { AnyNode } from "domhandler";
+
+const MAX_DOM_TEXT_DEPTH = 8_192;
+const MAX_DOM_TEXT_NODES = 50_000;
 
 const BLOCK_ELEMENT_NAMES = new Set([
   "address",
@@ -112,16 +116,21 @@ export function normalizePlainText(input: string): string {
     .trim();
 }
 
-export function normalizeHtmlText(input: string): string {
-  const $ = load(input, null, false);
-  const rootNodes = $.root().contents().toArray();
+export function normalizeHtmlNodesText(
+  rootNodes: readonly AnyNode[],
+): string | null {
+  if (rootNodes.length > MAX_DOM_TEXT_NODES) {
+    return null;
+  }
+
   const tokens: HtmlTextToken[] = [];
-  type HtmlNode = (typeof rootNodes)[number];
   type TraversalFrame =
-    { type: "node"; node: HtmlNode } | { type: "block-exit" };
+    { type: "node"; node: AnyNode; depth: number } | { type: "block-exit" };
   const stack: TraversalFrame[] = [...rootNodes]
     .reverse()
-    .map((node) => ({ type: "node", node }));
+    .map((node) => ({ type: "node", node, depth: 0 }));
+  let queuedNodes = rootNodes.length;
+  let visitedNodes = 0;
 
   while (stack.length > 0) {
     const frame = stack.pop();
@@ -135,7 +144,16 @@ export function normalizeHtmlText(input: string): string {
       continue;
     }
 
-    const { node } = frame;
+    const { node, depth } = frame;
+    queuedNodes -= 1;
+    visitedNodes += 1;
+
+    if (
+      depth > MAX_DOM_TEXT_DEPTH ||
+      visitedNodes > MAX_DOM_TEXT_NODES
+    ) {
+      return null;
+    }
 
     if (node.nodeType === 3 && "data" in node) {
       tokens.push({ type: "text", value: node.data.replace(/\s+/g, " ") });
@@ -164,10 +182,28 @@ export function normalizeHtmlText(input: string): string {
       stack.push({ type: "block-exit" });
     }
 
-    for (let index = node.children.length - 1; index >= 0; index -= 1) {
-      stack.push({ type: "node", node: node.children[index] });
+    if (
+      visitedNodes + queuedNodes + node.children.length >
+      MAX_DOM_TEXT_NODES
+    ) {
+      return null;
     }
+
+    for (let index = node.children.length - 1; index >= 0; index -= 1) {
+      stack.push({
+        type: "node",
+        node: node.children[index],
+        depth: depth + 1,
+      });
+    }
+    queuedNodes += node.children.length;
   }
 
   return normalizePlainText(renderHtmlTextTokens(tokens));
+}
+
+export function normalizeHtmlText(input: string): string {
+  const $ = load(input, null, false);
+
+  return normalizeHtmlNodesText($.root().contents().toArray()) ?? "";
 }

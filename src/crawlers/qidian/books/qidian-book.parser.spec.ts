@@ -116,6 +116,19 @@ describe("QidianBookParser", () => {
     ).toThrow("Qidian book is missing required fields");
   });
 
+  it.each(["chapter/99", "anything"])(
+    "rejects a detail URL with an extra pathname segment: %s",
+    (suffix) => {
+      expect(() =>
+        parser.parse({
+          html: fixture("book-optional-fields-missing.html"),
+          sourceUrl: `https://www.qidian.com/book/3300000001/${suffix}`,
+          fetchedAt: FETCHED_AT,
+        }),
+      ).toThrow("Qidian book is missing required fields");
+    },
+  );
+
   it("bounds traversal when embedded JSON contains a large unrelated array", () => {
     const sourceUrl = "https://www.qidian.com/book/3500000001/";
     const json = JSON.stringify({
@@ -155,5 +168,72 @@ describe("QidianBookParser", () => {
       externalBookId: "3600000001",
       metadata: {},
     });
+  });
+
+  it.each<[number, number | null]>([
+    [0, 0],
+    [2_147_483_647, 2_147_483_647],
+    [1.5, null],
+    [-1, null],
+    [2_147_483_648, null],
+  ])("maps wordCount %s to %s within the Prisma Int range", (value, expected) => {
+    const json = JSON.stringify({
+      book: {
+        bookId: "3800000001",
+        title: "字数边界小说",
+        author: "字数边界作者",
+        wordCount: value,
+      },
+    });
+
+    const result = parser.parse({
+      html: `<script id="book-detail-data" type="application/json">${json}</script>`,
+      sourceUrl: "https://www.qidian.com/book/3800000001/",
+      fetchedAt: FETCHED_AT,
+    });
+
+    expect(result.wordCount).toBe(expected);
+  });
+
+  it("reads deeply nested book DOM text without recursive overflow", () => {
+    const depth = 5_000;
+    const deepTitle = `${"<span>".repeat(depth)}深层 DOM 小说${"</span>".repeat(depth)}`;
+    const deepDescription = `${"<span>".repeat(depth)}深层简介${"</span>".repeat(depth)}`;
+
+    const result = parser.parse({
+      html: `
+        <section class="book-information" data-book-id="3900000001">
+          <h1><em>${deepTitle}</em></h1>
+          <a class="writer">深层作者</a>
+        </section>
+        <div class="book-intro"><p>第一段</p><p>${deepDescription}</p></div>
+      `,
+      sourceUrl: "https://www.qidian.com/book/3900000001/",
+      fetchedAt: FETCHED_AT,
+    });
+
+    expect(result).toMatchObject({
+      title: "深层 DOM 小说",
+      author: "深层作者",
+      description: "第一段\n深层简介",
+    });
+  });
+
+  it("fails closed when book DOM text exceeds the depth budget", () => {
+    const depth = 9_000;
+    const deepTitle = `${"<span>".repeat(depth)}超限标题${"</span>".repeat(depth)}`;
+
+    expect(() =>
+      parser.parse({
+        html: `
+          <section class="book-information" data-book-id="4000000001">
+            <h1><em>${deepTitle}</em></h1>
+            <a class="writer">超限作者</a>
+          </section>
+        `,
+        sourceUrl: "https://www.qidian.com/book/4000000001/",
+        fetchedAt: FETCHED_AT,
+      }),
+    ).toThrow("Qidian book is missing required fields");
   });
 });

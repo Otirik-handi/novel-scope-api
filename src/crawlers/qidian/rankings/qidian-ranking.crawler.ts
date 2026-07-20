@@ -1,6 +1,9 @@
 import type { CrawledRanking, RankingCrawler, RankType } from "../../interfaces";
 import type { QidianClient } from "../qidian.client";
-import { QIDIAN_RANKING_PATHS } from "../qidian.constants";
+import {
+  QIDIAN_BASE_URL,
+  QIDIAN_RANKING_PATHS,
+} from "../qidian.constants";
 import { QidianRankingParser } from "./qidian-ranking.parser";
 
 export class QidianRankingCrawlerError extends Error {
@@ -35,13 +38,18 @@ export class QidianRankingCrawler implements RankingCrawler {
     rankType: RankType,
   ): boolean {
     try {
-      const pathname = new URL(sourceUrl).pathname.replace(/\/$/, "");
+      const url = new URL(sourceUrl);
       const expectedPathname = QIDIAN_RANKING_PATHS[rankType].replace(
         /\/$/,
         "",
       );
 
-      return pathname === expectedPathname;
+      return (
+        url.origin === QIDIAN_BASE_URL &&
+        url.username === "" &&
+        url.password === "" &&
+        url.pathname.replace(/\/$/, "") === expectedPathname
+      );
     } catch {
       return false;
     }

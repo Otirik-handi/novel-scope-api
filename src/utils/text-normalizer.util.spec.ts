@@ -1,4 +1,9 @@
-import { normalizeHtmlText, normalizePlainText } from "./text-normalizer.util";
+import { load } from "cheerio";
+import {
+  normalizeHtmlNodesText,
+  normalizeHtmlText,
+  normalizePlainText,
+} from "./text-normalizer.util";
 
 describe("normalizePlainText", () => {
   it("collapses horizontal whitespace and trims each line", () => {
@@ -88,5 +93,29 @@ describe("normalizeHtmlText", () => {
     const html = `${"<div>".repeat(depth)}Visible${"</div>".repeat(depth)}`;
 
     expect(normalizeHtmlText(html)).toBe("Visible");
+  });
+});
+
+describe("normalizeHtmlNodesText", () => {
+  it("reads deep nodes iteratively and fails closed beyond the depth budget", () => {
+    const supportedDepth = 5_000;
+    const supported = load(
+      `${"<span>".repeat(supportedDepth)}Visible${"</span>".repeat(supportedDepth)}`,
+      null,
+      false,
+    );
+    const excessiveDepth = 9_000;
+    const excessive = load(
+      `${"<span>".repeat(excessiveDepth)}Hidden${"</span>".repeat(excessiveDepth)}`,
+      null,
+      false,
+    );
+
+    expect(normalizeHtmlNodesText(supported.root().contents().toArray())).toBe(
+      "Visible",
+    );
+    expect(
+      normalizeHtmlNodesText(excessive.root().contents().toArray()),
+    ).toBeNull();
   });
 });

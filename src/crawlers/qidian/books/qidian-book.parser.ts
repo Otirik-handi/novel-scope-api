@@ -6,6 +6,7 @@ import type {
 } from "../../interfaces";
 import { parseDisplayedNumber } from "../../../utils/number-parser.util";
 import {
+  normalizeHtmlNodesText,
   normalizeHtmlText,
   normalizePlainText,
 } from "../../../utils/text-normalizer.util";
@@ -20,6 +21,7 @@ const EMBEDDED_JSON_SELECTORS = [
 
 const MAX_JSON_VALUE_DEPTH = 64;
 const MAX_JSON_VALUES_TO_VALIDATE = 10_000;
+const MAX_PRISMA_INT = 2_147_483_647;
 
 interface QidianBookFields {
   externalBookId: string;
@@ -236,50 +238,54 @@ export class QidianBookParser {
   ): QidianBookFields | null {
     const root = $(".book-information, [data-book-id]").first();
     const domBookId = this.stringValue(root.attr("data-book-id")) ?? sourceBookId;
-    const title = normalizePlainText(
-      root.find("h1 em, h1 .book-title, h1").first().text(),
-    );
+    const titleElement = root.find("h1 em, h1 .book-title, h1").first();
+    const title =
+      normalizeHtmlNodesText(titleElement.contents().toArray()) ?? "";
     const authorElement = root
       .find(".writer, .author .name, [data-author]")
       .first();
-    const author = normalizePlainText(
-      authorElement.attr("data-author") ?? authorElement.text(),
-    );
+    const authorAttribute = authorElement.attr("data-author");
+    const author = authorAttribute
+      ? normalizePlainText(authorAttribute)
+      : (normalizeHtmlNodesText(authorElement.contents().toArray()) ?? "");
 
     if (!title || !author || domBookId !== sourceBookId) {
       return null;
     }
 
     const descriptionElement = $(".book-intro, .book-description").first();
-    const descriptionHtml = descriptionElement.html();
+    const description = normalizeHtmlNodesText(
+      descriptionElement.contents().toArray(),
+    );
     const coverElement = root.find(".book-img img, img.book-cover, img").first();
     const genres = root
       .find("[data-role='genre'], .genre, .category")
       .toArray()
-      .map((node) => normalizePlainText($(node).text()))
-      .filter(Boolean);
-    const status = normalizePlainText(
-      root.find(".book-status, [data-book-status]").first().text(),
-    );
+      .map((node) => normalizeHtmlNodesText($(node).contents().toArray()))
+      .filter((genre): genre is string => Boolean(genre));
+    const statusElement = root
+      .find(".book-status, [data-book-status]")
+      .first();
+    const status =
+      normalizeHtmlNodesText(statusElement.contents().toArray()) ?? "";
     const wordCountElement = root
       .find("[data-word-count], .word-count")
       .first();
+    const wordCountAttribute = wordCountElement.attr("data-word-count")?.trim();
 
     return {
       externalBookId: domBookId,
       title,
       author,
-      description: descriptionHtml
-        ? this.descriptionValue(descriptionHtml)
-        : null,
+      description: description || null,
       coverUrl: this.urlValue(
         coverElement.attr("data-src") ?? coverElement.attr("src"),
       ),
       genres: [...new Set(genres)],
       bookStatus: status || null,
       wordCount: this.numberValue(
-        wordCountElement.attr("data-word-count")?.trim() ||
-          wordCountElement.text(),
+        wordCountAttribute ||
+          normalizeHtmlNodesText(wordCountElement.contents().toArray()),
       ),
       metadata: {},
     };
@@ -288,7 +294,7 @@ export class QidianBookParser {
   private parseSourceBookId(sourceUrl: string): string | null {
     try {
       const url = new URL(sourceUrl);
-      const match = url.pathname.match(/^\/book\/(\d+)(?:\/|$)/);
+      const match = url.pathname.match(/^\/book\/(\d+)\/?$/);
 
       return url.origin === QIDIAN_BASE_URL && match ? match[1] : null;
     } catch {
@@ -331,16 +337,19 @@ export class QidianBookParser {
   }
 
   private numberValue(value: unknown): number | null {
-    if (
-      typeof value === "number" &&
-      Number.isFinite(value) &&
-      value >= 0 &&
-      value <= Number.MAX_SAFE_INTEGER
-    ) {
-      return value;
-    }
+    const parsed =
+      typeof value === "number"
+        ? value
+        : typeof value === "string"
+          ? parseDisplayedNumber(value)
+          : null;
 
-    return typeof value === "string" ? parseDisplayedNumber(value) : null;
+    return parsed !== null &&
+      Number.isInteger(parsed) &&
+      parsed >= 0 &&
+      parsed <= MAX_PRISMA_INT
+      ? parsed
+      : null;
   }
 
   private urlValue(value: unknown): string | null {
