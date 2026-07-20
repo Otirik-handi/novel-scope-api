@@ -1,5 +1,8 @@
 import { load } from "cheerio";
 
+const BLOCK_BREAK_MARKER = "\uE000";
+const HTML_BREAK_MARKER = "\uE001";
+
 const BLOCK_ELEMENTS = [
   "address",
   "article",
@@ -32,6 +35,21 @@ const BLOCK_ELEMENTS = [
   "ul",
 ].join(",");
 
+function resolveHtmlBreaks(input: string): string {
+  return input.replace(/[\s\uE000\uE001]+/g, (sequence) => {
+    const htmlBreakCount = sequence.split(HTML_BREAK_MARKER).length - 1;
+    const hasBlockBreak = sequence.includes(BLOCK_BREAK_MARKER);
+
+    if (htmlBreakCount === 0 && !hasBlockBreak) {
+      return sequence;
+    }
+
+    const breakCount = Math.min(2, Math.max(htmlBreakCount, 1));
+
+    return "\n".repeat(breakCount);
+  });
+}
+
 export function normalizePlainText(input: string): string {
   return input
     .replace(/\r\n?/g, "\n")
@@ -47,10 +65,10 @@ export function normalizeHtmlText(input: string): string {
   const $ = load(input, null, false);
 
   $("script,style,noscript").remove();
-  $("br").replaceWith("\n");
+  $("br").replaceWith(HTML_BREAK_MARKER);
   $(BLOCK_ELEMENTS).each((_, element) => {
-    $(element).before("\n").after("\n");
+    $(element).before(BLOCK_BREAK_MARKER).after(BLOCK_BREAK_MARKER);
   });
 
-  return normalizePlainText($.root().text().replace(/\n{2,}/g, "\n"));
+  return normalizePlainText(resolveHtmlBreaks($.root().text()));
 }

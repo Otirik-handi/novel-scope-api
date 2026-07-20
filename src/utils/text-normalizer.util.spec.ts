@@ -1,7 +1,4 @@
-import {
-  normalizeHtmlText,
-  normalizePlainText,
-} from "./text-normalizer.util";
+import { normalizeHtmlText, normalizePlainText } from "./text-normalizer.util";
 
 describe("normalizePlainText", () => {
   it("collapses horizontal whitespace and trims each line", () => {
@@ -19,8 +16,7 @@ describe("normalizePlainText", () => {
 
 describe("normalizeHtmlText", () => {
   it("converts breaks and block elements into newlines", () => {
-    const html =
-      "<p>第一行<br>第二行</p><div>第三行&nbsp;&nbsp;内容</div>";
+    const html = "<p>第一行<br>第二行</p><div>第三行&nbsp;&nbsp;内容</div>";
 
     expect(normalizeHtmlText(html)).toBe("第一行\n第二行\n第三行 内容");
   });
@@ -36,5 +32,19 @@ describe("normalizeHtmlText", () => {
       "<style>.hidden { display: none; }</style><p>Tom &amp; Jerry</p><script>alert('x')</script>";
 
     expect(normalizeHtmlText(html)).toBe("Tom & Jerry");
+  });
+
+  it("preserves one blank line from two HTML breaks", () => {
+    expect(normalizeHtmlText("A<br><br>B")).toBe("A\n\nB");
+  });
+
+  it("compresses excessive HTML breaks to one blank line", () => {
+    expect(normalizeHtmlText("A<br><br><br><br>B")).toBe("A\n\nB");
+  });
+
+  it("does not add a blank line at an adjacent block boundary", () => {
+    const html = "<p>A<br><br>B</p><div>C</div>";
+
+    expect(normalizeHtmlText(html)).toBe("A\n\nB\nC");
   });
 });
