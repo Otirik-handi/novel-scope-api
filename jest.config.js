@@ -7,6 +7,7 @@ module.exports = {
   testEnvironment: "node",
   setupFiles: ["<rootDir>/test/setup-env.ts"],
   testMatch: ["**/src/**/*.spec.ts", "**/test/**/*.e2e-spec.ts"],
+  testPathIgnorePatterns: ["<rootDir>/.worktrees/"],
   transform: {
     ...tsJestTransformCfg,
   },
