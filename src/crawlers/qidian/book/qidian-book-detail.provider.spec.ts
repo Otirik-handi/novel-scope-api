@@ -1,5 +1,5 @@
 import { QidianBookDetailProvider } from './qidian-book-detail.provider';
-import { SourceParseError } from './qidian.provider';
+import { SourceParseError } from '../rank/qidian.provider';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 

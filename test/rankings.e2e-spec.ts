@@ -2,7 +2,7 @@ import { BadRequestException, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { RankingsService, RefreshInProgressError } from '../src/rankings/rankings.service';
+import { RankingsService, RefreshInProgressError } from '../src/services/rankings.service';
 import { BadGatewayException } from '@nestjs/common';
 import { configureTrustProxy } from '../src/main';
 

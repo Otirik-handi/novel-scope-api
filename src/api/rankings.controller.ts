@@ -15,7 +15,7 @@ import { Response } from 'express';
 import { SkipThrottle } from '@nestjs/throttler';
 import { ApiKeyGuard } from './api-key.guard';
 import { RankingSnapshot } from '../types/ranking.types';
-import { RankingsService } from '../rankings/rankings.service';
+import { RankingsService } from '../services/rankings.service';
 import { RankingRouteDto } from './dto/ranking-route.dto';
 import { RankingHistoryDto } from './dto/ranking-history.dto';
 import { PlatformRouteDto } from './dto/platform-route.dto';

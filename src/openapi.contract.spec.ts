@@ -2,11 +2,11 @@
 import { Test } from '@nestjs/testing';
 import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import { HealthController } from './health.controller';
-import { PrismaService } from './prisma/prisma.service';
+import { PrismaService } from './db/prisma.service';
 import { BooksController } from './api/books.controller';
-import { BookDetailsService } from './rankings/book-details.service';
+import { BookDetailsService } from './services/book-details.service';
 import { RankingsController } from './api/rankings.controller';
-import { RankingsService } from './rankings/rankings.service';
+import { RankingsService } from './services/rankings.service';
 
 describe('OpenAPI contract', () => {
   let app: INestApplication;

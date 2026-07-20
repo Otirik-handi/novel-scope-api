@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
-import { BookDetailsService } from '../src/rankings/book-details.service';
+import { BookDetailsService } from '../src/services/book-details.service';
 
 describe('Book details API', () => {
   let app: INestApplication;

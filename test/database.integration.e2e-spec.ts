@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { config } from 'dotenv';
 import { Pool, type PoolClient } from 'pg';
-import { PostgresRankingLockService } from '../src/rankings/ranking-lock.service';
+import { PostgresRankingLockService } from '../src/db/ranking-lock.service';
 
 if (process.env.RUN_DATABASE_INTEGRATION_TESTS === 'true') config();
 
