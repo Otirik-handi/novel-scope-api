@@ -3,7 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 
-describe('GET /health', () => {
+describe('health probes', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -19,10 +19,16 @@ describe('GET /health', () => {
     await app.close();
   });
 
-  it('returns service availability', async () => {
-    await request(app.getHttpServer())
-      .get('/health')
+  it('returns liveness without requiring a database query', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/health/live')
       .expect(200)
       .expect({ status: 'ok' });
+
+    expect(response.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('keeps GET /health as a liveness compatibility alias', async () => {
+    await request(app.getHttpServer()).get('/health').expect(200).expect({ status: 'ok' });
   });
 });

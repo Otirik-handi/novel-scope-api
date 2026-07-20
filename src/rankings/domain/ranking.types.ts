@@ -1,4 +1,4 @@
-export type Platform = 'qidian' | 'jjwxc';
+export type Platform = 'qidian';
 
 export interface RankingKey {
   platform: Platform;
@@ -20,6 +20,7 @@ export interface RankingItem {
 }
 
 export interface RankingSnapshot extends RankingKey {
+  id?: string;
   sourceUrl: string;
   fetchedAt: string;
   status: 'fresh' | 'stale';

@@ -1,23 +1,11 @@
 import { CronJob } from 'cron';
-import { RefreshScheduleConfigService } from './refresh-schedule-config.service';
 import { RefreshScheduler } from './refresh.scheduler';
 
 describe('RefreshScheduler', () => {
   it('registers a configured cron job that refreshes every target', async () => {
     const rankings = { refresh: jest.fn().mockResolvedValue(undefined) };
     const registry = { addCronJob: jest.fn() };
-    const config = {
-      get: jest.fn().mockReturnValue({
-        cron: '0 0 */6 * * *',
-        targetConcurrency: 1,
-        jjwxcDetailConcurrency: 4,
-        targets: [
-          { platform: 'qidian', rank: 'hotsales', channel: null },
-          { platform: 'jjwxc', rank: 'income', channel: '0' },
-        ],
-      }),
-    } as unknown as RefreshScheduleConfigService;
-    const scheduler = new RefreshScheduler(rankings, registry, config);
+    const scheduler = new RefreshScheduler(rankings, registry);
 
     await scheduler.onApplicationBootstrap();
 
@@ -33,8 +21,9 @@ describe('RefreshScheduler', () => {
     expect(rankings.refresh).toHaveBeenCalledWith({
       platform: 'qidian', rank: 'hotsales', channel: null,
     });
-    expect(rankings.refresh).toHaveBeenCalledWith({
-      platform: 'jjwxc', rank: 'income', channel: '0',
-    });
+    expect(rankings.refresh).toHaveBeenCalledTimes(4);
+    expect(rankings.refresh).toHaveBeenCalledWith({ platform: 'qidian', rank: 'yuepiao', channel: null });
+    expect(rankings.refresh).toHaveBeenCalledWith({ platform: 'qidian', rank: 'recom', channel: null });
+    expect(rankings.refresh).toHaveBeenCalledWith({ platform: 'qidian', rank: 'collect', channel: null });
   });
 });

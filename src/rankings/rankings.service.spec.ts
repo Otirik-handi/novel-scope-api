@@ -1,6 +1,7 @@
 import { RankingProvider } from './domain/ranking-provider';
 import { RankingSnapshot } from './domain/ranking.types';
 import { RankingsService } from './rankings.service';
+import { StructuredLogger } from '../structured-logger';
 
 describe('RankingsService', () => {
   const snapshot: RankingSnapshot = {
@@ -10,7 +11,7 @@ describe('RankingsService', () => {
   };
 
   it('returns an existing snapshot as stale when refresh fails', async () => {
-    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn() };
+    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn(), recordFailure: jest.fn() };
     const provider: RankingProvider = {
       platform: 'qidian',
       fetch: jest.fn().mockRejectedValue(new Error('source unavailable')),
@@ -20,15 +21,148 @@ describe('RankingsService', () => {
     await expect(service.refresh(snapshot)).resolves.toEqual({
       ...snapshot,
       status: 'stale',
-      lastError: 'source unavailable',
+      lastError: 'UNKNOWN_ERROR',
     });
     expect(store.write).not.toHaveBeenCalled();
+    expect(store.recordFailure).toHaveBeenCalledWith(snapshot, expect.any(Date), expect.any(Error));
   });
 
   it('returns a persisted snapshot without triggering a refresh', async () => {
-    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn() };
+    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn(), recordFailure: jest.fn() };
     const service = new RankingsService(store, []);
 
     await expect(service.get(snapshot)).resolves.toEqual(snapshot);
+  });
+
+  it('rejects a manual refresh when the upstream crawl fails even with a prior snapshot', async () => {
+    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn(), recordFailure: jest.fn() };
+    const provider: RankingProvider = {
+      platform: 'qidian',
+      fetch: jest.fn().mockRejectedValue(new Error('source unavailable')),
+    };
+    const service = new RankingsService(store, [provider]);
+
+    await expect(service.refreshStrict(snapshot)).rejects.toMatchObject({
+      status: 502,
+      response: expect.objectContaining({ code: 'UPSTREAM_ERROR' }),
+    });
+    expect(store.write).not.toHaveBeenCalled();
+    expect(store.recordFailure).toHaveBeenCalledWith(snapshot, expect.any(Date), expect.any(Error));
+  });
+
+  it('reports a platform target as failed when its strict refresh fails despite a prior snapshot', async () => {
+    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn(), recordFailure: jest.fn() };
+    const provider: RankingProvider = {
+      platform: 'qidian',
+      fetch: jest.fn().mockImplementation((key) => key.rank === 'yuepiao' ? Promise.reject(new Error('source unavailable')) : Promise.resolve({ ...snapshot, rank: key.rank })),
+    };
+    const service = new RankingsService(store, [provider]);
+
+    await expect(service.refreshPlatform('qidian')).resolves.toEqual({
+      results: [
+        { rankType: 'hotsales', status: 'success' },
+        { rankType: 'yuepiao', status: 'failed', errorCode: 'UPSTREAM_ERROR' },
+        { rankType: 'recom', status: 'success' },
+        { rankType: 'collect', status: 'success' },
+      ],
+    });
+    expect(store.recordFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ rank: 'yuepiao' }), expect.any(Date), expect.any(Error),
+    );
+  });
+
+  it('limits platform refreshes to two concurrent Qidian crawls', async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const store = { read: jest.fn(), write: jest.fn(), recordFailure: jest.fn() };
+    const provider: RankingProvider = {
+      platform: 'qidian',
+      fetch: jest.fn(async (key) => {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return { ...snapshot, rank: key.rank };
+      }),
+    };
+    const service = new RankingsService(store, [provider]);
+
+    await service.refreshPlatform('qidian');
+
+    expect(maximumActive).toBe(2);
+  });
+
+  it('writes a successful crawl completion using the whitelisted result', async () => {
+    const store = { read: jest.fn(), write: jest.fn(), recordFailure: jest.fn() };
+    const provider: RankingProvider = { platform: 'qidian', fetch: jest.fn().mockResolvedValue(snapshot) };
+    const logger = { crawlCompleted: jest.fn() } as unknown as StructuredLogger;
+    const service = new RankingsService(store, [provider], undefined, logger);
+
+    await service.refresh(snapshot);
+
+    expect(logger.crawlCompleted).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: 'ranking', targetKey: 'qidian:hotsales', platform: 'qidian', result: 'success',
+    }));
+  });
+
+  it('writes a failed crawl completion without an upstream error message', async () => {
+    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn(), recordFailure: jest.fn() };
+    const provider: RankingProvider = { platform: 'qidian', fetch: jest.fn().mockRejectedValue(new Error('upstream secret text')) };
+    const logger = { crawlCompleted: jest.fn() } as unknown as StructuredLogger;
+    const service = new RankingsService(store, [provider], undefined, logger);
+
+    await service.refresh(snapshot);
+
+    expect(logger.crawlCompleted).toHaveBeenCalledWith(expect.objectContaining({
+      result: 'failed', errorCode: 'UNKNOWN_ERROR',
+    }));
+    expect(logger.crawlCompleted.mock.calls[0]?.[0]).not.toHaveProperty('error');
+  });
+
+  it('writes a skipped crawl completion when the advisory lock is unavailable', async () => {
+    const store = { read: jest.fn().mockResolvedValue(snapshot), write: jest.fn(), recordFailure: jest.fn() };
+    const lock = { withLock: jest.fn().mockResolvedValue({ acquired: false }) };
+    const logger = { crawlCompleted: jest.fn() } as unknown as StructuredLogger;
+    const service = new RankingsService(store, [], lock, logger);
+
+    await expect(service.refresh(snapshot)).rejects.toMatchObject({ status: 409, response: expect.objectContaining({ code: 'REFRESH_IN_PROGRESS' }) });
+
+    expect(logger.crawlCompleted).toHaveBeenCalledWith(expect.objectContaining({
+      result: 'skipped',
+    }));
+    expect(logger.crawlCompleted.mock.calls[0]?.[0]).not.toHaveProperty('errorCode');
+  });
+
+  it('writes a failed crawl completion even when failure persistence rejects', async () => {
+    const store = { read: jest.fn(), write: jest.fn(), recordFailure: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const provider: RankingProvider = { platform: 'qidian', fetch: jest.fn().mockRejectedValue(new Error('upstream secret text')) };
+    const logger = { crawlCompleted: jest.fn() } as unknown as StructuredLogger;
+    const service = new RankingsService(store, [provider], undefined, logger);
+
+    await expect(service.refresh(snapshot)).rejects.toThrow('database unavailable');
+
+    expect(logger.crawlCompleted).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', errorCode: 'UNKNOWN_ERROR' }));
+  });
+
+  it('writes a skipped crawl completion even when skip persistence rejects', async () => {
+    const store = { read: jest.fn(), write: jest.fn(), recordFailure: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const lock = { withLock: jest.fn().mockResolvedValue({ acquired: false }) };
+    const logger = { crawlCompleted: jest.fn() } as unknown as StructuredLogger;
+    const service = new RankingsService(store, [], lock, logger);
+
+    await expect(service.refresh(snapshot)).rejects.toThrow('database unavailable');
+
+    expect(logger.crawlCompleted).toHaveBeenCalledWith(expect.objectContaining({ result: 'skipped' }));
+  });
+
+  it('writes a failed crawl completion when advisory lock acquisition rejects', async () => {
+    const store = { read: jest.fn(), write: jest.fn(), recordFailure: jest.fn() };
+    const lock = { withLock: jest.fn().mockRejectedValue(new Error('lock database unavailable')) };
+    const logger = { crawlCompleted: jest.fn() } as unknown as StructuredLogger;
+    const service = new RankingsService(store, [], lock, logger);
+
+    await expect(service.refresh(snapshot)).rejects.toThrow('lock database unavailable');
+
+    expect(logger.crawlCompleted).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', errorCode: 'UNKNOWN_ERROR' }));
   });
 });
