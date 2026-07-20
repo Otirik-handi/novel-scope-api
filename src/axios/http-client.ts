@@ -21,38 +21,6 @@ const localAxiosErrorCodes = new Set([
   'ERR_INVALID_URL',
   'ERR_NOT_SUPPORT',
 ]);
-const networkErrorCodeDenyList = new Set([
-  'ENOTFOUND',
-  'ENETUNREACH',
-  'UNABLE_TO_GET_ISSUER_CERT',
-  'UNABLE_TO_GET_CRL',
-  'UNABLE_TO_DECRYPT_CERT_SIGNATURE',
-  'UNABLE_TO_DECRYPT_CRL',
-  'UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY',
-  'CERT_SIGNATURE_FAILURE',
-  'CRL_SIGNATURE_FAILURE',
-  'CERT_NOT_YET_VALID',
-  'CERT_HAS_EXPIRED',
-  'CRL_NOT_YET_VALID',
-  'CRL_HAS_EXPIRED',
-  'ERROR_IN_CERT_NOT_BEFORE_FIELD',
-  'ERROR_IN_CERT_NOT_AFTER_FIELD',
-  'ERROR_IN_CRL_LAST_UPDATE_FIELD',
-  'ERROR_IN_CRL_NEXT_UPDATE_FIELD',
-  'OUT_OF_MEM',
-  'DEPTH_ZERO_SELF_SIGNED_CERT',
-  'SELF_SIGNED_CERT_IN_CHAIN',
-  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
-  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-  'CERT_CHAIN_TOO_LONG',
-  'CERT_REVOKED',
-  'INVALID_CA',
-  'PATH_LENGTH_EXCEEDED',
-  'INVALID_PURPOSE',
-  'CERT_UNTRUSTED',
-  'CERT_REJECTED',
-  'HOSTNAME_MISMATCH',
-]);
 const idempotentMethods = new Set(['get', 'head', 'options', 'put', 'delete']);
 const defaultDelay: HttpRequestDelay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -125,7 +93,7 @@ export abstract class HttpClient {
       error.code !== undefined &&
       !timeoutErrorCodes.has(error.code) &&
       error.code !== 'ERR_CANCELED' &&
-      !networkErrorCodeDenyList.has(error.code);
+      !localAxiosErrorCodes.has(error.code);
   }
 
   private isIdempotentRequestError(error: AxiosError): boolean {

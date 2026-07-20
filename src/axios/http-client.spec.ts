@@ -131,16 +131,18 @@ describe('HttpClient', () => {
     expect(axiosInstance.get).toHaveBeenCalledTimes(1);
   });
 
-  it('does not retry a denied network error without a response status', async () => {
+  it('retries a DNS network error and returns the later response', async () => {
     const failure = new AxiosError('host not found', 'ENOTFOUND');
-    axiosInstance.get.mockRejectedValue(failure);
+    axiosInstance.get
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce({ data: Buffer.from('ok'), config: { url } });
     const client = new TestHttpClient(
-      { get: jest.fn((key: string) => key === 'httpRetries' ? 2 : undefined) } as never,
+      { get: jest.fn((key: string) => key === 'httpRetries' ? 1 : undefined) } as never,
       jest.fn().mockResolvedValue(undefined),
     );
 
-    await expect(client.request(url)).rejects.toMatchObject({ cause: failure });
-    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+    await expect(client.request(url)).resolves.toEqual({ body: Buffer.from('ok'), finalUrl: url });
+    expect(axiosInstance.get).toHaveBeenCalledTimes(2);
   });
 
   it('does not retry a local Axios option validation error', async () => {
