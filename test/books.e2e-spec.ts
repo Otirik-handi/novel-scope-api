@@ -11,7 +11,7 @@ describe('Book details API', () => {
   beforeAll(async () => { process.env.REFRESH_API_KEY = 'test-key'; const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(BookDetailsService).useValue(details).compile(); app = moduleRef.createNestApplication(); await app.init(); });
   afterAll(async () => { delete process.env.REFRESH_API_KEY; await app.close(); });
   it('returns the only public V1 book-detail contract', async () => { await request(app.getHttpServer()).get('/v1/books/qidian/123').expect(200).expect(snapshot); expect(details.get).toHaveBeenCalledWith('123'); });
-  it('rejects unsupported platforms and non-numeric identifiers', async () => { await request(app.getHttpServer()).get('/v1/books/jjwxc/123').expect(400); await request(app.getHttpServer()).get('/v1/books/qidian/abc').expect(400); });
+  it('rejects unsupported platforms and non-numeric identifiers', async () => { await request(app.getHttpServer()).get('/v1/books/unsupported/123').expect(400); await request(app.getHttpServer()).get('/v1/books/qidian/abc').expect(400); });
   it('does not expose the removed admin refresh endpoint', async () => { await request(app.getHttpServer()).post('/v1/admin/books/qidian/123/refresh').expect(404); });
   it('enforces the dedicated ten-per-minute book detail limit', async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(BookDetailsService).useValue({ get: jest.fn().mockResolvedValue(snapshot) }).compile();

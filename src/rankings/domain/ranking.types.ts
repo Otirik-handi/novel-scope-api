@@ -1,4 +1,4 @@
-export type Platform = 'qidian' | 'jjwxc';
+export type Platform = 'qidian';
 
 export interface RankingKey {
   platform: Platform;

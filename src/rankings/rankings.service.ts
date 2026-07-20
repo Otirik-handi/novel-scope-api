@@ -4,6 +4,7 @@ import { RankingKey, RankingSnapshot } from './domain/ranking.types';
 import { crawlErrorCode, SnapshotStoreService } from './snapshot-store.service';
 import { RANKING_LOCK, RankingLock } from './ranking-lock.service';
 import { appLogger, type CrawlErrorCode, StructuredLogger } from '../structured-logger';
+import { mapWithConcurrency } from './concurrency';
 
 export const RANKING_CRAWL_LOGGER = Symbol('RANKING_CRAWL_LOGGER');
 
@@ -87,7 +88,7 @@ export class RankingsService {
 
   async refreshPlatform(platform: 'qidian'): Promise<{ results: Array<{ rankType: string; status: 'success' | 'failed' | 'skipped'; snapshotId?: string; errorCode?: string }> }> {
     const ranks = ['hotsales', 'yuepiao', 'recom', 'collect'] as const;
-    const results = await Promise.all(ranks.map(async (rankType) => {
+    const results = await mapWithConcurrency(ranks, 2, async (rankType) => {
       try {
         const snapshot = await this.refreshStrict({ platform, rank: rankType, channel: null });
         return { rankType, status: 'success' as const, ...(snapshot.id ? { snapshotId: snapshot.id } : {}) };
@@ -95,7 +96,7 @@ export class RankingsService {
         if (error instanceof RefreshInProgressError) return { rankType, status: 'skipped' as const, errorCode: 'REFRESH_IN_PROGRESS' };
         return { rankType, status: 'failed' as const, errorCode: this.errorCode(error) };
       }
-    }));
+    });
     return { results };
   }
 

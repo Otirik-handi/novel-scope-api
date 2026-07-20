@@ -114,7 +114,7 @@ describe('RankingHttpClient', () => {
     jest.spyOn(Date, 'now').mockImplementation(() => now);
     const client = new RankingHttpClient();
 
-    await expect(client.get('https://www.jjwxc.net/topten.php')).resolves.toEqual(Buffer.from('ok'));
+    await expect(client.get('https://example.test/retry')).resolves.toEqual(Buffer.from('ok'));
     expect(adapter).toHaveBeenCalledTimes(2);
   });
 
