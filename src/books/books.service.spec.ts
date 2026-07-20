@@ -66,6 +66,17 @@ const invalidCrawledBooks: Array<[string, CrawledBook]> = [
   ],
 ];
 
+function expectSafeLog(
+  loggerError: { mock: { calls: unknown[][] } },
+  context: string,
+): void {
+  expect(loggerError.mock.calls).toEqual([[context]]);
+  const serialized = JSON.stringify(loggerError.mock.calls).toLowerCase();
+  expect(serialized).not.toContain("secret");
+  expect(serialized).not.toContain("token");
+  expect(serialized).not.toContain("c:\\deploy");
+}
+
 function createSubject(currentTime = now) {
   const repository = {
     findDetail: jest.fn(),
@@ -159,8 +170,10 @@ describe("BooksService", () => {
   });
 
   it.each([
-    new Error("crawler failed with postgres://admin:secret@db/internal"),
-    "non-error crawler failure",
+    new Error(
+      "crawler failed with postgres://admin:secret@db/internal at C:\\deploy\\token.txt",
+    ),
+    "non-error crawler failure token=secret",
   ])(
     "returns the unchanged expired detail as stale when refresh throws %p",
     async (refreshError) => {
@@ -184,9 +197,9 @@ describe("BooksService", () => {
       expect(JSON.stringify(result)).not.toContain("secret");
       expect(expiredBook).toEqual(originalBook);
       expect(repository.upsertDetail).not.toHaveBeenCalled();
-      expect(loggerError).toHaveBeenCalledWith(
+      expectSafeLog(
+        loggerError,
         "Failed to refresh book qidian/1031940621; serving stale detail",
-        refreshError instanceof Error ? refreshError.stack : undefined,
       );
     },
   );
@@ -200,23 +213,33 @@ describe("BooksService", () => {
     };
     const originalBook = structuredClone(expiredBook);
     const { service, repository, bookCrawler } = createSubject();
-    jest.spyOn(Logger.prototype, "error").mockImplementation();
+    const loggerError = jest
+      .spyOn(Logger.prototype, "error")
+      .mockImplementation();
     repository.findDetail.mockResolvedValue(expiredBook);
     bookCrawler.crawl.mockResolvedValue(crawledBook);
-    repository.upsertDetail.mockRejectedValue(new Error("transaction failed"));
+    repository.upsertDetail.mockRejectedValue(
+      new Error("transaction failed with token=secret at C:\\deploy\\db.log"),
+    );
 
     await expect(
       service.getDetail("qidian", "1031940621"),
     ).resolves.toEqual({ ...originalBook, stale: true });
     expect(expiredBook).toEqual(originalBook);
     expect(repository.upsertDetail).toHaveBeenCalledTimes(1);
+    expectSafeLog(
+      loggerError,
+      "Failed to refresh book qidian/1031940621; serving stale detail",
+    );
   });
 
   it.each(invalidCrawledBooks)(
     "rejects a first crawl result with %s without persisting it",
     async (_reason, invalidBook) => {
       const { service, repository, bookCrawler } = createSubject();
-      jest.spyOn(Logger.prototype, "error").mockImplementation();
+      const loggerError = jest
+        .spyOn(Logger.prototype, "error")
+        .mockImplementation();
       repository.findDetail.mockResolvedValue(null);
       bookCrawler.crawl.mockResolvedValue(invalidBook);
 
@@ -227,6 +250,10 @@ describe("BooksService", () => {
         message: BOOK_REFRESH_FAILED,
       });
       expect(repository.upsertDetail).not.toHaveBeenCalled();
+      expectSafeLog(
+        loggerError,
+        "Failed to fetch book qidian/1031940621",
+      );
     },
   );
 
@@ -253,9 +280,9 @@ describe("BooksService", () => {
     ).resolves.toEqual({ ...originalBook, stale: true });
     expect(expiredBook).toEqual(originalBook);
     expect(repository.upsertDetail).not.toHaveBeenCalled();
-    expect(loggerError).toHaveBeenCalledWith(
+    expectSafeLog(
+      loggerError,
       "Failed to refresh book qidian/1031940621; serving stale detail",
-      expect.any(String),
     );
   });
 
@@ -274,8 +301,8 @@ describe("BooksService", () => {
   });
 
   it.each([
-    new Error("crawler failed with axios secret details"),
-    "non-error first crawl failure",
+    new Error("crawler failed with axios secret token at C:\\deploy\\crawler.log"),
+    "non-error first crawl failure token=secret",
   ])(
     "propagates the first crawl failure %p without persisting a partial detail",
     async (refreshError) => {
@@ -290,9 +317,9 @@ describe("BooksService", () => {
         service.getDetail("qidian", "1031940621"),
       ).rejects.toBeInstanceOf(BookRefreshError);
       expect(repository.upsertDetail).not.toHaveBeenCalled();
-      expect(loggerError).toHaveBeenCalledWith(
+      expectSafeLog(
+        loggerError,
         "Failed to fetch book qidian/1031940621",
-        refreshError instanceof Error ? refreshError.stack : undefined,
       );
     },
   );

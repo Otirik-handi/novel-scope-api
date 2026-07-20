@@ -40,25 +40,39 @@ export class BooksRepository {
     expiresAt: Date,
   ): Promise<StoredBookDetail> {
     return this.prisma.$transaction(async (transaction) => {
-      const book = await transaction.book.upsert({
+      await transaction.book.createMany({
+        data: [
+          {
+            platform: crawledBook.platform,
+            externalBookId: crawledBook.externalBookId,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      const book = await transaction.book.findUniqueOrThrow({
         where: {
           platform_externalBookId: {
             platform: crawledBook.platform,
             externalBookId: crawledBook.externalBookId,
           },
         },
-        create: {
-          platform: crawledBook.platform,
-          externalBookId: crawledBook.externalBookId,
-        },
-        update: {},
         select: { id: true, platform: true, externalBookId: true },
       });
       const detailData = this.detailData(crawledBook, expiresAt);
-      const detail = await transaction.bookDetail.upsert({
+      await transaction.bookDetail.upsert({
         where: { bookId: book.id },
         create: { bookId: book.id, ...detailData },
-        update: detailData,
+        update: {},
+      });
+      await transaction.bookDetail.updateMany({
+        where: {
+          bookId: book.id,
+          fetchedAt: { lte: crawledBook.fetchedAt },
+        },
+        data: detailData,
+      });
+      const detail = await transaction.bookDetail.findUniqueOrThrow({
+        where: { bookId: book.id },
       });
 
       return this.toStoredDetail(

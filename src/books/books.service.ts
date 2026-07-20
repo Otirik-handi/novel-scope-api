@@ -65,14 +65,12 @@ export class BooksService {
       if (stored !== null) {
         this.logger.error(
           `Failed to refresh book ${platform}/${externalBookId}; serving stale detail`,
-          error instanceof Error ? error.stack : undefined,
         );
         return { ...stored, stale: true };
       }
 
       this.logger.error(
         `Failed to fetch book ${platform}/${externalBookId}`,
-        error instanceof Error ? error.stack : undefined,
       );
       throw new BookRefreshError(error);
     }

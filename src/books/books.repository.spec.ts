@@ -76,12 +76,13 @@ describe("BooksRepository", () => {
 
   it("atomically upserts the Book and its latest BookDetail", async () => {
     const expiresAt = new Date("2026-07-20T15:00:00.000Z");
-    const bookUpsert = jest.fn().mockResolvedValue({
+    const bookCreateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const bookFindUniqueOrThrow = jest.fn().mockResolvedValue({
       id: "book-1",
       platform: "qidian",
       externalBookId: "1031940621",
     });
-    const detailUpsert = jest.fn().mockResolvedValue({
+    const persistedDetail = {
       bookId: "book-1",
       title: crawledBook.title,
       author: crawledBook.author,
@@ -94,10 +95,22 @@ describe("BooksRepository", () => {
       sourceUrl: crawledBook.sourceUrl,
       fetchedAt: crawledBook.fetchedAt,
       expiresAt,
-    });
+    };
+    const detailUpsert = jest.fn().mockResolvedValue(persistedDetail);
+    const detailUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const detailFindUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue(persistedDetail);
     const transactionClient = {
-      book: { upsert: bookUpsert },
-      bookDetail: { upsert: detailUpsert },
+      book: {
+        createMany: bookCreateMany,
+        findUniqueOrThrow: bookFindUniqueOrThrow,
+      },
+      bookDetail: {
+        upsert: detailUpsert,
+        updateMany: detailUpdateMany,
+        findUniqueOrThrow: detailFindUniqueOrThrow,
+      },
     };
     const transaction = jest.fn(async (callback) =>
       callback(transactionClient),
@@ -114,15 +127,17 @@ describe("BooksRepository", () => {
       expiresAt,
     });
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(bookUpsert).toHaveBeenCalledWith({
+    expect(bookCreateMany).toHaveBeenCalledWith({
+      data: [{ platform: "qidian", externalBookId: "1031940621" }],
+      skipDuplicates: true,
+    });
+    expect(bookFindUniqueOrThrow).toHaveBeenCalledWith({
       where: {
         platform_externalBookId: {
           platform: "qidian",
           externalBookId: "1031940621",
         },
       },
-      create: { platform: "qidian", externalBookId: "1031940621" },
-      update: {},
       select: { id: true, platform: true, externalBookId: true },
     });
     const expectedDetailData = {
@@ -141,7 +156,91 @@ describe("BooksRepository", () => {
     expect(detailUpsert).toHaveBeenCalledWith({
       where: { bookId: "book-1" },
       create: { bookId: "book-1", ...expectedDetailData },
-      update: expectedDetailData,
+      update: {},
     });
+    expect(detailUpdateMany).toHaveBeenCalledWith({
+      where: {
+        bookId: "book-1",
+        fetchedAt: { lte: crawledBook.fetchedAt },
+      },
+      data: expectedDetailData,
+    });
+    expect(detailFindUniqueOrThrow).toHaveBeenCalledWith({
+      where: { bookId: "book-1" },
+    });
+    expect(detailUpsert.mock.invocationCallOrder[0]).toBeLessThan(
+      detailUpdateMany.mock.invocationCallOrder[0] as number,
+    );
+    expect(detailUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      detailFindUniqueOrThrow.mock.invocationCallOrder[0] as number,
+    );
+  });
+
+  it("returns the actual newer stored detail when an older conditional update loses", async () => {
+    const incomingExpiresAt = new Date("2026-07-20T15:00:00.000Z");
+    const newerDetail = {
+      bookId: "book-1",
+      title: "更新标题",
+      author: crawledBook.author,
+      description: "更新简介",
+      coverUrl: crawledBook.coverUrl,
+      genres: crawledBook.genres,
+      bookStatus: crawledBook.bookStatus,
+      wordCount: crawledBook.wordCount,
+      metadata: crawledBook.metadata,
+      sourceUrl: crawledBook.sourceUrl,
+      fetchedAt: new Date("2026-07-20T14:00:00.000Z"),
+      expiresAt: new Date("2026-07-20T17:00:00.000Z"),
+    };
+    const detailUpsert = jest.fn().mockResolvedValue(newerDetail);
+    const detailUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const detailFindUniqueOrThrow = jest
+      .fn()
+      .mockResolvedValue(newerDetail);
+    const transactionClient = {
+      book: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: "book-1",
+          platform: "qidian",
+          externalBookId: crawledBook.externalBookId,
+        }),
+      },
+      bookDetail: {
+        upsert: detailUpsert,
+        updateMany: detailUpdateMany,
+        findUniqueOrThrow: detailFindUniqueOrThrow,
+      },
+    };
+    const repository = new BooksRepository({
+      $transaction: jest.fn(async (callback) => callback(transactionClient)),
+    } as unknown as PrismaService);
+
+    await expect(
+      repository.upsertDetail(crawledBook, incomingExpiresAt),
+    ).resolves.toEqual({
+      bookId: "book-1",
+      platform: "qidian",
+      externalBookId: crawledBook.externalBookId,
+      title: newerDetail.title,
+      author: newerDetail.author,
+      description: newerDetail.description,
+      coverUrl: newerDetail.coverUrl,
+      genres: newerDetail.genres,
+      bookStatus: newerDetail.bookStatus,
+      wordCount: newerDetail.wordCount,
+      metadata: newerDetail.metadata,
+      sourceUrl: newerDetail.sourceUrl,
+      fetchedAt: newerDetail.fetchedAt,
+      expiresAt: newerDetail.expiresAt,
+    });
+    expect(detailUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          bookId: "book-1",
+          fetchedAt: { lte: crawledBook.fetchedAt },
+        },
+      }),
+    );
   });
 });
