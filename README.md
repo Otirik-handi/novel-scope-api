@@ -1,4 +1,4 @@
-# Novel Ranking API
+# NovelScope API
 
 基于 NestJS、Prisma 和 PostgreSQL 的起点中文网榜单快照服务。V0.1 仅支持起点的月票、畅销、推荐和收藏榜；查询接口只读取数据库中已成功持久化的快照，不会隐式采集上游网站。
 
