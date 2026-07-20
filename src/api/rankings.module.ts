@@ -8,7 +8,7 @@ import { BOOK_DETAIL_CRAWL_LOGGER, BOOK_DETAILS_CLOCK, BookDetailsService } from
 import { BooksController } from './books.controller';
 import { QidianProvider } from '../crawlers/qidian/rank/qidian.provider';
 import { QidianBookDetailProvider } from '../crawlers/qidian/book/qidian-book-detail.provider';
-import { RankingHttpClient } from '../axios/ranking-http.client';
+import { QidianHttpClient } from '../crawlers/qidian/qidian-http-client';
 import { RankingsController } from './rankings.controller';
 import { RankingsService, RANKING_PROVIDERS } from '../services/rankings.service';
 import { RANKING_CRAWL_LOGGER } from '../services/rankings.service';
@@ -35,7 +35,7 @@ import { appLogger } from '../structured-logger';
     { provide: BOOK_DETAIL_CRAWL_LOGGER, useValue: appLogger },
     BookDetailStoreService,
     CrawlLogRetentionService,
-    RankingHttpClient,
+    QidianHttpClient,
     QidianProvider,
     QidianBookDetailProvider,
     {

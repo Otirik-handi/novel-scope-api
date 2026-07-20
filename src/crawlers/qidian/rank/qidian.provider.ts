@@ -3,17 +3,17 @@ import * as cheerio from 'cheerio';
 import { RankingProvider } from '../../../types/ranking-provider';
 import { RankingItem, RankingKey, RankingSnapshot } from '../../../types/ranking.types';
 import { isSupportedRank } from '../../../types/ranking-catalog';
-import { RankingHttpClient } from '../../../axios/ranking-http.client';
+import { QidianHttpClient } from '../qidian-http-client';
 
 export class SourceParseError extends Error {}
 
-type QidianHttp = Pick<RankingHttpClient, 'getResponse'>;
+type QidianHttp = Pick<QidianHttpClient, 'getResponse'>;
 
 @Injectable()
 export class QidianProvider implements RankingProvider {
   readonly platform = 'qidian' as const;
 
-  constructor(@Inject(RankingHttpClient) private readonly http: QidianHttp) {}
+  constructor(@Inject(QidianHttpClient) private readonly http: QidianHttp) {}
 
   async fetch(key: RankingKey): Promise<RankingSnapshot> {
     if (!isSupportedRank('qidian', key.rank)) throw new Error(`Unsupported Qidian rank: ${key.rank}`);

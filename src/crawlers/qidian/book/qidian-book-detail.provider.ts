@@ -2,11 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import * as cheerio from 'cheerio';
 import { FetchedBookDetail } from '../../../types/book-detail.types';
 import { SourceParseError } from '../rank/qidian.provider';
-import { RankingHttpClient } from '../../../axios/ranking-http.client';
+import { QidianHttpClient } from '../qidian-http-client';
 
 @Injectable()
 export class QidianBookDetailProvider {
-  constructor(@Inject(RankingHttpClient) private readonly http: Pick<RankingHttpClient, 'getResponse'>) {}
+  constructor(@Inject(QidianHttpClient) private readonly http: Pick<QidianHttpClient, 'getResponse'>) {}
   async fetch(bookId: string): Promise<FetchedBookDetail> {
     const response = await this.http.getResponse(`https://www.qidian.com/book/${bookId}/`);
     const html = response.body.toString('utf8'); const $ = cheerio.load(html);
