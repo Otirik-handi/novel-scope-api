@@ -1,4 +1,4 @@
-const { spawnSync } = require("node:child_process");
+const { runNodeCli } = require("./run-node-cli.cjs");
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
 const applicationDatabaseUrl = process.env.DATABASE_URL?.trim();
@@ -22,9 +22,8 @@ const migrationEnvironment = {
   DATABASE_URL: testDatabaseUrl,
 };
 
-function run(args, environment) {
-  const executable = process.platform === "win32" ? "npx.cmd" : "npx";
-  const result = spawnSync(executable, args, {
+function run(moduleId, args, environment) {
+  const result = runNodeCli(moduleId, args, {
     env: environment,
     stdio: "inherit",
   });
@@ -38,8 +37,9 @@ function run(args, environment) {
   }
 }
 
-run(["prisma", "migrate", "deploy"], migrationEnvironment);
+run("prisma/build/index.js", ["migrate", "deploy"], migrationEnvironment);
 run(
-  ["jest", "--config", "jest.database.config.js", "--runInBand"],
+  "jest/bin/jest",
+  ["--config", "jest.database.config.js", "--runInBand"],
   process.env,
 );

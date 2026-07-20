@@ -2,7 +2,7 @@ const baseConfig = require("./jest.config");
 
 module.exports = {
   ...baseConfig,
-  testMatch: ["<rootDir>/test/e2e/**/*.e2e-spec.ts"],
-  testRegex: undefined,
+  roots: ["<rootDir>/test/e2e"],
+  testRegex: ".*\\.e2e-spec\\.ts$",
   testPathIgnorePatterns: ["/node_modules/"],
 };
