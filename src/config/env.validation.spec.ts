@@ -1,3 +1,5 @@
+import { ConfigService } from "@nestjs/config";
+import { Test, type TestingModule } from "@nestjs/testing";
 import { validateEnvironment } from "./env.validation";
 
 const requiredEnvironment = {
@@ -75,5 +77,66 @@ describe("validateEnvironment", () => {
         RANKING_REFRESH_TIME_ZONE: "Invalid/TimeZone",
       }),
     ).toThrow("RANKING_REFRESH_TIME_ZONE must be a valid IANA time zone");
+  });
+
+  it("assembles named configuration from normalized environment values", async () => {
+    const environmentKeys = [
+      "DATABASE_URL",
+      "QIDIAN_USER_AGENT",
+      "PORT",
+      "QIDIAN_REQUEST_TIMEOUT_MS",
+      "BOOK_DETAIL_TTL_HOURS",
+      "RANKING_REFRESH_CRON",
+      "RANKING_REFRESH_TIME_ZONE",
+    ] as const;
+    const originalEnvironment = Object.fromEntries(
+      environmentKeys.map((key) => [key, process.env[key]]),
+    );
+
+    process.env.DATABASE_URL =
+      "  postgresql://postgres:postgres@localhost:5432/novel_scope  ";
+    process.env.QIDIAN_USER_AGENT = "  NovelScope/0.1  ";
+    process.env.PORT = "3100";
+    process.env.QIDIAN_REQUEST_TIMEOUT_MS = "15000";
+    delete process.env.BOOK_DETAIL_TTL_HOURS;
+    delete process.env.RANKING_REFRESH_CRON;
+    delete process.env.RANKING_REFRESH_TIME_ZONE;
+
+    let moduleReference: TestingModule | undefined;
+
+    try {
+      const { AppModule } = await import("../app.module");
+      moduleReference = await Test.createTestingModule({
+        imports: [AppModule],
+      }).compile();
+      const configService = moduleReference.get(ConfigService);
+
+      expect({
+        databaseUrl: configService.get("database.url"),
+        qidianUserAgent: configService.get("crawler.qidianUserAgent"),
+        port: configService.get("app.port"),
+        requestTimeoutMs: configService.get("crawler.requestTimeoutMs"),
+        bookDetailTtlHours: configService.get("app.bookDetailTtlHours"),
+      }).toEqual({
+        databaseUrl:
+          "postgresql://postgres:postgres@localhost:5432/novel_scope",
+        qidianUserAgent: "NovelScope/0.1",
+        port: 3100,
+        requestTimeoutMs: 15_000,
+        bookDetailTtlHours: 3,
+      });
+    } finally {
+      await moduleReference?.close();
+
+      for (const key of environmentKeys) {
+        const value = originalEnvironment[key];
+
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
   });
 });

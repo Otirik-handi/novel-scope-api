@@ -1,8 +1,13 @@
 import { registerAs } from "@nestjs/config";
+import { validateEnvironment } from "./env.validation";
 
-export default registerAs("app", () => ({
-  port: Number(process.env.PORT),
-  bookDetailTtlHours: Number(process.env.BOOK_DETAIL_TTL_HOURS),
-  rankingRefreshCron: process.env.RANKING_REFRESH_CRON as string,
-  rankingRefreshTimeZone: process.env.RANKING_REFRESH_TIME_ZONE as string,
-}));
+export default registerAs("app", () => {
+  const environment = validateEnvironment(process.env);
+
+  return {
+    port: environment.PORT,
+    bookDetailTtlHours: environment.BOOK_DETAIL_TTL_HOURS,
+    rankingRefreshCron: environment.RANKING_REFRESH_CRON,
+    rankingRefreshTimeZone: environment.RANKING_REFRESH_TIME_ZONE,
+  };
+});
