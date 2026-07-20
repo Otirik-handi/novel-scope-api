@@ -30,6 +30,19 @@ describe('HttpClient', () => {
     expect(axios.create).toHaveBeenCalledWith({ timeout: 5_000 });
   });
 
+  it('uses the default timeout and caps default retries at two', async () => {
+    axiosInstance.get
+      .mockRejectedValueOnce(new AxiosError('offline', 'ERR_NETWORK'))
+      .mockRejectedValueOnce(new AxiosError('offline', 'ERR_NETWORK'))
+      .mockResolvedValueOnce({ data: Buffer.from('ok'), config: { url } });
+    const client = new TestHttpClient(undefined, jest.fn().mockResolvedValue(undefined));
+
+    await expect(client.request(url)).resolves.toEqual({ body: Buffer.from('ok'), finalUrl: url });
+
+    expect(axios.create).toHaveBeenCalledWith({ timeout: 10_000 });
+    expect(axiosInstance.get).toHaveBeenCalledTimes(3);
+  });
+
   it('runs executeAttempt for each network request attempt', async () => {
     const executeAttempt = jest.fn(async (work: () => Promise<unknown>) => work());
     axiosInstance.get
@@ -77,6 +90,19 @@ describe('HttpClient', () => {
     });
   });
 
+  it('falls back from the configured URL to the input URL', async () => {
+    axiosInstance.get
+      .mockResolvedValueOnce({ data: Buffer.from('ok'), config: { url: 'https://example.test/configured' } })
+      .mockResolvedValueOnce({ data: Buffer.from('ok'), config: {} });
+    const client = new TestHttpClient();
+
+    await expect(client.request(url)).resolves.toEqual({
+      body: Buffer.from('ok'),
+      finalUrl: 'https://example.test/configured',
+    });
+    await expect(client.request(url)).resolves.toEqual({ body: Buffer.from('ok'), finalUrl: url });
+  });
+
   it('does not retry a forbidden response', async () => {
     const response = { status: 403 } as AxiosResponse;
     const failure = new AxiosError('forbidden', undefined, undefined, undefined, response);
@@ -92,6 +118,18 @@ describe('HttpClient', () => {
     expect(axiosInstance.get).toHaveBeenCalledTimes(1);
   });
 
+  it('does not retry a denied network error without a response status', async () => {
+    const failure = new AxiosError('host not found', 'ENOTFOUND');
+    axiosInstance.get.mockRejectedValue(failure);
+    const client = new TestHttpClient(
+      { get: jest.fn((key: string) => key === 'httpRetries' ? 2 : undefined) } as never,
+      jest.fn().mockResolvedValue(undefined),
+    );
+
+    await expect(client.request(url)).rejects.toMatchObject({ cause: failure });
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+  });
+
   it('normalizes unknown failures while retaining the original cause', async () => {
     const failure = new Error('unexpected');
     axiosInstance.get.mockRejectedValue(failure);
@@ -102,5 +140,18 @@ describe('HttpClient', () => {
     expect(error).toBeInstanceOf(HttpRequestError);
     expect(error).toMatchObject({ url, status: undefined, cause: failure });
     expect((error as Error).message).toContain(url);
+  });
+
+  it('preserves the normalized error diagnostic', async () => {
+    const failure = new AxiosError('offline', 'ERR_NETWORK');
+    axiosInstance.get.mockRejectedValue(failure);
+    const client = new TestHttpClient(
+      { get: jest.fn((key: string) => key === 'httpRetries' ? 0 : undefined) } as never,
+    );
+
+    await expect(client.request(url)).rejects.toMatchObject({
+      diagnostic: 'ERR_NETWORK',
+      cause: failure,
+    });
   });
 });

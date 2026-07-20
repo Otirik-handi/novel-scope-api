@@ -15,13 +15,46 @@ export type HttpRequestOptions = {
 export type HttpRequestDelay = (milliseconds: number) => Promise<void>;
 
 const timeoutErrorCodes = new Set(['ECONNABORTED', 'ETIMEDOUT']);
+const networkErrorCodeDenyList = new Set([
+  'ENOTFOUND',
+  'ENETUNREACH',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_CRL',
+  'UNABLE_TO_DECRYPT_CERT_SIGNATURE',
+  'UNABLE_TO_DECRYPT_CRL',
+  'UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY',
+  'CERT_SIGNATURE_FAILURE',
+  'CRL_SIGNATURE_FAILURE',
+  'CERT_NOT_YET_VALID',
+  'CERT_HAS_EXPIRED',
+  'CRL_NOT_YET_VALID',
+  'CRL_HAS_EXPIRED',
+  'ERROR_IN_CERT_NOT_BEFORE_FIELD',
+  'ERROR_IN_CERT_NOT_AFTER_FIELD',
+  'ERROR_IN_CRL_LAST_UPDATE_FIELD',
+  'ERROR_IN_CRL_NEXT_UPDATE_FIELD',
+  'OUT_OF_MEM',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'CERT_CHAIN_TOO_LONG',
+  'CERT_REVOKED',
+  'INVALID_CA',
+  'PATH_LENGTH_EXCEEDED',
+  'INVALID_PURPOSE',
+  'CERT_UNTRUSTED',
+  'CERT_REJECTED',
+  'HOSTNAME_MISMATCH',
+]);
+const idempotentMethods = new Set(['get', 'head', 'options', 'put', 'delete']);
 const defaultDelay: HttpRequestDelay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export class HttpRequestError extends Error {
   constructor(
     public readonly url: string,
     public readonly status: number | undefined,
-    diagnostic: number | string | undefined,
+    public readonly diagnostic: number | string | undefined,
     cause: unknown,
   ) {
     const detail = cause instanceof Error ? cause.message : String(cause);
@@ -73,11 +106,27 @@ export abstract class HttpClient {
     if (!axios.isAxiosError(error)) return false;
 
     const status = error.response?.status ?? error.status;
-    if (status === 403) return false;
     if (timeoutErrorCodes.has(error.code ?? '')) return true;
     if (status === 408 || status === 429 || (status !== undefined && status >= 500)) return true;
 
-    return status === undefined && error.code !== 'ERR_CANCELED';
+    return this.isNetworkError(error) || this.isIdempotentRequestError(error);
+  }
+
+  private isNetworkError(error: AxiosError): boolean {
+    return !error.response &&
+      error.code !== undefined &&
+      !timeoutErrorCodes.has(error.code) &&
+      error.code !== 'ERR_CANCELED' &&
+      !networkErrorCodeDenyList.has(error.code);
+  }
+
+  private isIdempotentRequestError(error: AxiosError): boolean {
+    const method = error.config?.method?.toLowerCase();
+    if (method === undefined || !idempotentMethods.has(method)) return false;
+
+    const status = error.response?.status;
+    return error.code !== 'ECONNABORTED' &&
+      (!error.response || status === 429 || (status !== undefined && status >= 500 && status <= 599));
   }
 
   private normalizeError(url: string, error: unknown): HttpRequestError {
