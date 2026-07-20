@@ -18,6 +18,7 @@ const configurationEnvironmentKeys = [
   "BOOK_DETAIL_TTL_HOURS",
   "RANKING_REFRESH_CRON",
   "RANKING_REFRESH_TIME_ZONE",
+  "NODE_ENV",
 ] as const;
 
 function withEnvironment<T>(
@@ -62,11 +63,24 @@ describe("validateEnvironment", () => {
         expect(appConfig()).toEqual({
           port: 3100,
           bookDetailTtlHours: 6,
+          rankingRefreshEnabled: true,
           rankingRefreshCron: "0 0 7 * * *",
           rankingRefreshTimeZone: "Asia/Shanghai",
         });
       },
     );
+  });
+
+  it("enables scheduled refreshes outside the test environment", () => {
+    withEnvironment({ NODE_ENV: "production" }, () => {
+      expect(appConfig()?.rankingRefreshEnabled).toBe(true);
+    });
+  });
+
+  it("disables scheduled refreshes in the test environment", () => {
+    withEnvironment({ NODE_ENV: "test" }, () => {
+      expect(appConfig()?.rankingRefreshEnabled).toBe(false);
+    });
   });
 
   it("loads database configuration independently", () => {

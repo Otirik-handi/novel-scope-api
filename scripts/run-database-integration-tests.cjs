@@ -1,8 +1,11 @@
 const { assertDatabaseIsolation } = require("./database-isolation.cjs");
+const { loadLocalEnvironment } = require("./load-local-environment.cjs");
 const {
   runDatabaseIntegrationTests,
 } = require("./database-integration-runner.cjs");
 const { runNodeCli } = require("./run-node-cli.cjs");
+
+loadLocalEnvironment();
 
 runDatabaseIntegrationTests({
   environment: process.env,

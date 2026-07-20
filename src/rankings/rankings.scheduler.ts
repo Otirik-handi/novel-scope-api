@@ -24,6 +24,10 @@ export class RankingsScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!this.config.rankingRefreshEnabled) {
+      return;
+    }
+
     const job = CronJob.from({
       cronTime: this.config.rankingRefreshCron,
       timeZone: this.config.rankingRefreshTimeZone,

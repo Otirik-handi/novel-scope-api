@@ -24,6 +24,9 @@ describe("RankingsScheduler", () => {
       refreshAll: jest.fn().mockResolvedValue([]),
     } as unknown as RankingsService;
     const config = {
+      port: 3000,
+      bookDetailTtlHours: 3,
+      rankingRefreshEnabled: true,
       rankingRefreshCron: "0 0 6 * * *",
       rankingRefreshTimeZone: "Asia/Shanghai",
     } as ConfigType<typeof appConfig>;
@@ -45,5 +48,33 @@ describe("RankingsScheduler", () => {
 
     scheduler.onModuleDestroy();
     expect(deleteCronJob).toHaveBeenCalledWith(RANKINGS_REFRESH_JOB_NAME);
+  });
+
+  it("does not register a cron job when scheduling is disabled", () => {
+    let registeredJob: { stop(): void } | undefined;
+    const registry = {
+      addCronJob: jest.fn((_name, job) => {
+        registeredJob = job;
+      }),
+      deleteCronJob: jest.fn(() => registeredJob?.stop()),
+    } as unknown as SchedulerRegistry;
+    const service = {
+      refreshAll: jest.fn(),
+    } as unknown as RankingsService;
+    const config = {
+      port: 3000,
+      bookDetailTtlHours: 3,
+      rankingRefreshEnabled: false,
+      rankingRefreshCron: "0 0 6 * * *",
+      rankingRefreshTimeZone: "Asia/Shanghai",
+    } as ConfigType<typeof appConfig>;
+    const scheduler = new RankingsScheduler(service, registry, config);
+
+    scheduler.onModuleInit();
+    scheduler.onModuleDestroy();
+
+    expect(registry.addCronJob).not.toHaveBeenCalled();
+    expect(registry.deleteCronJob).not.toHaveBeenCalled();
+    expect(service.refreshAll).not.toHaveBeenCalled();
   });
 });
