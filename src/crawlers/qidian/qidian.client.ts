@@ -5,6 +5,8 @@ import {
   QIDIAN_ACCEPT,
   QIDIAN_ACCEPT_LANGUAGE,
   QIDIAN_BASE_URL,
+  QIDIAN_MAX_CONTENT_LENGTH_BYTES,
+  QIDIAN_MAX_REDIRECTS,
 } from "./qidian.constants";
 
 export interface QidianClientOptions {
@@ -36,8 +38,9 @@ export class QidianClientError extends Error {
     message: string,
     readonly code: QidianClientErrorCode,
     readonly reason?: QidianAccessBlockReason,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 
@@ -50,24 +53,46 @@ export class QidianClient {
 
   async fetchPage(pathOrUrl: string): Promise<QidianPage> {
     const requestUrl = this.resolveTrustedUrl(pathOrUrl);
-    const response = await this.http.get<ArrayBuffer | Uint8Array>(
-      requestUrl.href,
-      {
+    const response = await this.http
+      .get<ArrayBuffer | Uint8Array>(requestUrl.href, {
+        beforeRedirect: (redirectOptions) => {
+          const href = redirectOptions.href;
+
+          if (typeof href !== "string") {
+            throw new QidianClientError(
+              "Qidian URL is not trusted",
+              "QIDIAN_UNTRUSTED_URL",
+            );
+          }
+
+          this.resolveTrustedUrl(href);
+        },
         headers: {
           Accept: QIDIAN_ACCEPT,
           "Accept-Language": QIDIAN_ACCEPT_LANGUAGE,
           "User-Agent": this.options.userAgent,
         },
+        maxContentLength: QIDIAN_MAX_CONTENT_LENGTH_BYTES,
+        maxRedirects: QIDIAN_MAX_REDIRECTS,
         responseType: "arraybuffer",
         timeout: this.options.requestTimeoutMs,
         validateStatus: (status) =>
           (status >= 200 && status < 300) ||
           ACCESS_CONTROL_HTTP_STATUSES.has(status),
-      },
-    );
-    const sourceUrl = this.resolveTrustedUrl(
-      this.extractFinalUrl(response.request) ?? requestUrl.href,
-    ).href;
+      })
+      .catch((error: unknown) => {
+        throw this.findQidianClientError(error) ?? error;
+      });
+    const finalUrl = this.extractFinalUrl(response.request);
+
+    if (!finalUrl && this.hasRedirected(response.request)) {
+      throw new QidianClientError(
+        "Qidian URL is not trusted",
+        "QIDIAN_UNTRUSTED_URL",
+      );
+    }
+
+    const sourceUrl = this.resolveTrustedUrl(finalUrl ?? requestUrl.href).href;
     const contentType = this.getHeaderString(
       response.headers,
       "content-type",
@@ -77,17 +102,24 @@ export class QidianClient {
         ? new Uint8Array(response.data)
         : response.data;
 
-    const html = decodeBuffer(bytes, contentType);
+    const statusBlockReason = this.getStatusBlockReason(response.status);
+    let html: string;
+
+    try {
+      html = decodeBuffer(bytes, contentType);
+    } catch (error) {
+      if (statusBlockReason) {
+        throw this.createAccessBlockedError(statusBlockReason, error);
+      }
+
+      throw error;
+    }
+
     const blockReason =
-      this.detectAccessBlock(html, sourceUrl) ??
-      this.getStatusBlockReason(response.status);
+      this.detectAccessBlock(html, sourceUrl) ?? statusBlockReason;
 
     if (blockReason) {
-      throw new QidianClientError(
-        "Qidian access was blocked",
-        "QIDIAN_ACCESS_BLOCKED",
-        blockReason,
-      );
+      throw this.createAccessBlockedError(blockReason);
     }
 
     return { html, sourceUrl };
@@ -102,6 +134,40 @@ export class QidianClient {
 
     if (status === 403 || status === 429) {
       return "access-denied";
+    }
+
+    return undefined;
+  }
+
+  private createAccessBlockedError(
+    reason: QidianAccessBlockReason,
+    cause?: unknown,
+  ): QidianClientError {
+    return new QidianClientError(
+      "Qidian access was blocked",
+      "QIDIAN_ACCESS_BLOCKED",
+      reason,
+      cause === undefined ? undefined : { cause },
+    );
+  }
+
+  private findQidianClientError(
+    error: unknown,
+  ): QidianClientError | undefined {
+    const seen = new Set<unknown>();
+    let current = error;
+
+    while (typeof current === "object" && current !== null) {
+      if (current instanceof QidianClientError) {
+        return current;
+      }
+
+      if (seen.has(current)) {
+        return undefined;
+      }
+
+      seen.add(current);
+      current = (current as { cause?: unknown }).cause;
     }
 
     return undefined;
@@ -181,11 +247,8 @@ export class QidianClient {
     const title = html.match(/<title\b[^>]*>([\s\S]{0,300}?)<\/title>/i)?.[1];
 
     if (
-      (title &&
-        /(?:安全验证|验证码|captcha|security verification)/i.test(title)) ||
-      /<(?:form|div|section)\b[^>]*(?:id|class)\s*=\s*["'][^"']*(?:captcha|geetest|verify(?:-?code)?)[^"']*["'][^>]*>/i.test(
-        html,
-      )
+      title &&
+      /(?:安全验证|验证码|captcha|security verification)/i.test(title)
     ) {
       return "captcha";
     }
@@ -194,10 +257,6 @@ export class QidianClient {
       title &&
       /(?:用户登录|登录\s*[-_|]\s*起点中文网|sign\s*in)/i.test(title)
     ) {
-      return "login";
-    }
-
-    if (this.hasStructuredLoginForm(html)) {
       return "login";
     }
 
@@ -213,20 +272,55 @@ export class QidianClient {
       return "access-denied";
     }
 
-    return undefined;
+    return this.detectDomAccessBlock(html);
   }
 
-  private hasStructuredLoginForm(html: string): boolean {
-    if (!/<form\b/i.test(html)) {
-      return false;
+  private detectDomAccessBlock(
+    html: string,
+  ): QidianAccessBlockReason | undefined {
+    if (!/(?:captcha|geetest|verify(?:-?code)?|<form\b)/i.test(html)) {
+      return undefined;
     }
 
     const $ = load(html);
+    const accessNodes = $("form, div, section").toArray();
+    type HtmlElement = (typeof accessNodes)[number];
+    const isVisible = (node: HtmlElement): boolean =>
+      [node, ...$(node).parents().toArray()].every((candidate) => {
+        const element = $(candidate);
+        const ariaHidden = element.attr("aria-hidden")?.trim().toLowerCase();
+        const style = element.attr("style")?.replace(/\s+/g, "").toLowerCase();
 
-    return $("form")
+        return (
+          element.attr("hidden") === undefined &&
+          ariaHidden !== "true" &&
+          !style
+            ?.split(";")
+            .some(
+              (declaration) =>
+                declaration.startsWith("display:none") ||
+                declaration.startsWith("visibility:hidden"),
+            )
+        );
+      });
+    const isCaptchaNode = (node: HtmlElement): boolean => {
+      const element = $(node);
+      const identity = `${element.attr("id") ?? ""} ${element.attr("class") ?? ""}`;
+
+      return /(?:captcha|geetest|verify(?:-?code)?)/i.test(identity);
+    };
+    const hasCaptchaChallenge = accessNodes.some(
+      (node) => isCaptchaNode(node) && isVisible(node),
+    );
+
+    const hasLoginForm = $("form")
       .toArray()
       .some((form) => {
         const element = $(form);
+
+        if (!isVisible(form)) {
+          return false;
+        }
 
         if (element.hasClass("login-form")) {
           return true;
@@ -246,6 +340,39 @@ export class QidianClient {
           return false;
         }
       });
+
+    if (!hasCaptchaChallenge && !hasLoginForm) {
+      return undefined;
+    }
+
+    const hasNormalContent = $(
+      "main, article, [role='main'], .rank-box, .book-information, .book-content-wrap",
+    )
+      .toArray()
+      .some((node) => {
+        if (!isVisible(node)) {
+          return false;
+        }
+
+        const content = $(node).clone();
+        content.find("form").remove();
+        content
+          .find("div, section")
+          .filter((_index, candidate) => isCaptchaNode(candidate))
+          .remove();
+
+        return content.text().replace(/\s+/g, "").length >= 8;
+      });
+
+    if (hasNormalContent) {
+      return undefined;
+    }
+
+    if (hasCaptchaChallenge) {
+      return "captcha";
+    }
+
+    return hasLoginForm ? "login" : undefined;
   }
 
   private extractFinalUrl(request: unknown): string | undefined {
@@ -268,5 +395,22 @@ export class QidianClient {
     const nodeResponseUrl = (response as { responseUrl?: unknown }).responseUrl;
 
     return typeof nodeResponseUrl === "string" ? nodeResponseUrl : undefined;
+  }
+
+  private hasRedirected(request: unknown): boolean {
+    if (typeof request !== "object" || request === null) {
+      return false;
+    }
+
+    const redirectable = (request as { _redirectable?: unknown })._redirectable;
+
+    if (typeof redirectable !== "object" || redirectable === null) {
+      return false;
+    }
+
+    const redirectCount = (redirectable as { _redirectCount?: unknown })
+      ._redirectCount;
+
+    return typeof redirectCount === "number" && redirectCount > 0;
   }
 }

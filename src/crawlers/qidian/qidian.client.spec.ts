@@ -60,6 +60,21 @@ function createClient(adapter: AxiosAdapter): QidianClient {
   });
 }
 
+function createRedirectOptions(target: string): Record<string, unknown> {
+  const url = new URL(target);
+
+  return {
+    href: url.href,
+    host: url.host,
+    hostname: url.hostname,
+    path: `${url.pathname}${url.search}`,
+    pathname: url.pathname,
+    port: url.port,
+    protocol: url.protocol,
+    search: url.search,
+  };
+}
+
 describe("QidianClient", () => {
   it("requests a trusted Qidian URL with bounded arraybuffer settings", async () => {
     const { adapter, requests } = createAdapter();
@@ -72,6 +87,8 @@ describe("QidianClient", () => {
     expect(requests[0].method).toBe("get");
     expect(requests[0].responseType).toBe("arraybuffer");
     expect(requests[0].timeout).toBe(REQUEST_TIMEOUT_MS);
+    expect(requests[0].maxContentLength).toBe(5 * 1024 * 1024);
+    expect(Number.isFinite(requests[0].maxContentLength)).toBe(true);
     expect(requests[0].headers.get("User-Agent")).toBe(USER_AGENT);
     expect(requests[0].headers.get("Accept-Language")).toContain("zh-CN");
   });
@@ -88,6 +105,20 @@ describe("QidianClient", () => {
         sourceUrl,
       },
     );
+  });
+
+  it("fails closed when a redirected response has no final URL", async () => {
+    const { adapter, requests } = createAdapter({
+      request: { _redirectable: { _redirectCount: 1 }, res: {} },
+    });
+
+    await expect(
+      createClient(adapter).fetchPage("/rank/yuepiao/"),
+    ).rejects.toMatchObject({
+      code: "QIDIAN_UNTRUSTED_URL",
+      name: "QidianClientError",
+    });
+    expect(requests).toHaveLength(1);
   });
 
   it("decodes the response using the Content-Type charset", async () => {
@@ -182,6 +213,87 @@ describe("QidianClient", () => {
   });
 
   it.each([
+    "https://example.com/untrusted",
+    "http://www.qidian.com/insecure",
+    "https://user@www.qidian.com/private",
+  ])("blocks an untrusted redirect before its request: %s", async (target) => {
+    let secondHopStarted = false;
+    let redirectTrustError: unknown;
+    const adapter: AxiosAdapter = async (config) => {
+      try {
+        config.beforeRedirect?.(
+          createRedirectOptions(target),
+          { headers: {}, statusCode: 302 },
+          {
+            headers: {},
+            method: "GET",
+            url: "https://www.qidian.com/rank/yuepiao/",
+          },
+        );
+      } catch (error) {
+        redirectTrustError = error;
+        const redirectError = new Error("Redirect failed", { cause: error });
+
+        throw AxiosError.from(
+          redirectError,
+          "ERR_FR_REDIRECTION_FAILURE",
+          config,
+        );
+      }
+
+      secondHopStarted = true;
+      throw new AxiosError(
+        "External redirect returned 404",
+        AxiosError.ERR_BAD_REQUEST,
+        config,
+      );
+    };
+
+    const received = await createClient(adapter)
+      .fetchPage("/rank/yuepiao/")
+      .catch((error: unknown) => error);
+
+    expect(received).toMatchObject({
+      code: "QIDIAN_UNTRUSTED_URL",
+      name: "QidianClientError",
+    });
+    expect(received).toBe(redirectTrustError);
+    expect(secondHopStarted).toBe(false);
+  });
+
+  it("allows a bounded same-origin HTTPS redirect", async () => {
+    const target = "https://www.qidian.com/rank/yuepiao/?page=2";
+    let secondHopStarted = false;
+    const adapter: AxiosAdapter = async (config) => {
+      config.beforeRedirect?.(
+        createRedirectOptions(target),
+        { headers: {}, statusCode: 302 },
+        {
+          headers: {},
+          method: "GET",
+          url: "https://www.qidian.com/rank/yuepiao/",
+        },
+      );
+      secondHopStarted = true;
+      expect(config.maxRedirects).toBe(5);
+
+      return {
+        data: Buffer.from("<html>ok</html>"),
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "text/html; charset=utf-8" },
+        config,
+        request: { res: { responseUrl: target } },
+      };
+    };
+
+    await expect(
+      createClient(adapter).fetchPage("/rank/yuepiao/"),
+    ).resolves.toMatchObject({ sourceUrl: target });
+    expect(secondHopStarted).toBe(true);
+  });
+
+  it.each([
     [
       "captcha",
       "<html><head><title>安全验证</title></head><body><div id=\"captcha\">请完成验证码</div></body></html>",
@@ -242,6 +354,53 @@ describe("QidianClient", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it.each([
+    '<form class="login-form"><p>请登录后继续访问当前页面内容。</p></form>',
+    '<section class="captcha-panel"><p>请完成安全验证后继续访问。</p></section>',
+  ])(
+    "detects an exclusive access wall inside a main container: %s",
+    async (component) => {
+      const html = `<html><head><title>起点中文网</title></head><body><main>${component}</main></body></html>`;
+      const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+      await expect(
+        createClient(adapter).fetchPage("/book/123/"),
+      ).rejects.toMatchObject({
+        code: "QIDIAN_ACCESS_BLOCKED",
+        name: "QidianClientError",
+      });
+    },
+  );
+
+  it.each([
+    '<form class="login-form" hidden></form>',
+    '<div aria-hidden="true"><form action="/login"></form></div>',
+    '<section class="captcha-panel" style="display: none"></section>',
+    '<div style="visibility:hidden"><div class="verify-code"></div></div>',
+  ])("ignores a hidden access-wall component: %s", async (component) => {
+    const html = `<html><head><title>起点中文网</title></head><body>${component}<footer>页面底部</footer></body></html>`;
+    const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+    await expect(
+      createClient(adapter).fetchPage("/book/123/"),
+    ).resolves.toMatchObject({ html });
+  });
+
+  it.each([
+    '<form class="login-form"></form>',
+    '<section class="captcha-panel"></section>',
+  ])(
+    "ignores a preloaded access-wall component beside normal content: %s",
+    async (component) => {
+      const html = `<html><head><title>书籍详情</title></head><body><main><article><h1>示例小说</h1><p>这里是可正常阅读的书籍正文内容。</p></article></main>${component}</body></html>`;
+      const { adapter } = createAdapter({ data: Buffer.from(html) });
+
+      await expect(
+        createClient(adapter).fetchPage("/book/123/"),
+      ).resolves.toMatchObject({ html });
+    },
+  );
+
   it("does not retry a failed request", async () => {
     let requests = 0;
     const failure = new Error("network unavailable");
@@ -255,6 +414,31 @@ describe("QidianClient", () => {
     ).rejects.toBe(failure);
     expect(requests).toBe(1);
   });
+
+  it.each(["plain", "decompressed"])(
+    "propagates a %s response size limit failure without retrying",
+    async (responseKind) => {
+      let requests = 0;
+      let sizeError: AxiosError | undefined;
+      const adapter: AxiosAdapter = async (config) => {
+        requests += 1;
+        sizeError = new AxiosError(
+          `${responseKind} response exceeded maxContentLength`,
+          AxiosError.ERR_BAD_RESPONSE,
+          config,
+        );
+        throw sizeError;
+      };
+
+      const received = await createClient(adapter)
+        .fetchPage("/rank/yuepiao/")
+        .catch((error: unknown) => error);
+
+      expect(received).toBe(sizeError);
+      expect(received).toMatchObject({ code: AxiosError.ERR_BAD_RESPONSE });
+      expect(requests).toBe(1);
+    },
+  );
 
   it.each([
     {
@@ -307,5 +491,57 @@ describe("QidianClient", () => {
       status: 500,
     });
     expect(requests).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      status: 401,
+      contentType: "text/html; charset=x-unknown",
+      reason: "login",
+    },
+    {
+      status: 403,
+      contentType: "text/html; charset=x-unknown; broken",
+      reason: "access-denied",
+    },
+    {
+      status: 429,
+      contentType: "charset=x-unknown",
+      reason: "access-denied",
+    },
+  ])(
+    "maps HTTP $status to $reason when charset decoding fails",
+    async ({ status, contentType, reason }) => {
+      const { adapter, requests } = createAdapter({
+        data: Buffer.from("blocked"),
+        headers: { "content-type": contentType },
+        status,
+      });
+
+      const received = await createClient(adapter)
+        .fetchPage("/rank/yuepiao/")
+        .catch((error: unknown) => error);
+
+      expect(received).toMatchObject({
+        cause: new Error("Unsupported charset"),
+        code: "QIDIAN_ACCESS_BLOCKED",
+        message: "Qidian access was blocked",
+        name: "QidianClientError",
+        reason,
+      });
+      expect(requests).toHaveLength(1);
+    },
+  );
+
+  it("preserves a charset decoding failure for a successful response", async () => {
+    const { adapter } = createAdapter({
+      data: Buffer.from("content"),
+      headers: { "content-type": "text/html; charset=x-unknown" },
+      status: 200,
+    });
+
+    await expect(
+      createClient(adapter).fetchPage("/rank/yuepiao/"),
+    ).rejects.toThrow(new Error("Unsupported charset"));
   });
 });

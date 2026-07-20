@@ -10,6 +10,8 @@ export const QIDIAN_RANKING_PATHS = {
 } as const satisfies Record<RankType, string>;
 
 export const QIDIAN_BOOK_PATH_PREFIX = "/book/";
+export const QIDIAN_MAX_CONTENT_LENGTH_BYTES = 5 * 1024 * 1024;
+export const QIDIAN_MAX_REDIRECTS = 5;
 
 export const QIDIAN_ACCEPT =
   "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
