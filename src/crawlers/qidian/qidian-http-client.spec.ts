@@ -143,6 +143,64 @@ describe('QidianHttpClient', () => {
     await expect(Promise.all([firstRequest, ...secondRequests])).resolves.toHaveLength(3);
   });
 
+  it('reset rejects queued work and prevents an old delayed callback from starting it', async () => {
+    let now = 0;
+    let releaseDelay: (() => void) | undefined;
+    const delay = jest.fn((milliseconds: number) => new Promise<void>((resolve) => {
+      releaseDelay = () => { now += milliseconds; resolve(); };
+    }));
+    let completeFirst: (() => void) | undefined;
+    axiosInstance.get
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        completeFirst = () => resolve({ data: Buffer.from('ok') });
+      }))
+      .mockResolvedValue({ data: Buffer.from('ok') });
+    const client = new QidianHttpClient({
+      get: jest.fn((key: string) => key === 'qidianMinRequestIntervalMs' ? 1_000 : undefined),
+    } as never, { now: () => now }, delay);
+
+    const first = client.get('https://www.qidian.com/rank/first/');
+    await Promise.resolve();
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+    completeFirst?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    const queued = client.get('https://www.qidian.com/rank/second/');
+    await Promise.resolve();
+    expect(delay).toHaveBeenCalledWith(1_000);
+    expect(releaseDelay).toEqual(expect.any(Function));
+    const queuedFailure = queued.catch((error: unknown) => error);
+    QidianHttpClient.resetQidianGovernanceForTests();
+    releaseDelay!();
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+    await expect(queuedFailure).resolves.toMatchObject({ message: expect.stringContaining('closed') });
+    await expect(first).resolves.toEqual(Buffer.from('ok'));
+  });
+
+  it('module destruction rejects queued work and prevents active completion from draining it', async () => {
+    let completeFirst: (() => void) | undefined;
+    axiosInstance.get.mockImplementation(() => new Promise((resolve) => {
+      completeFirst = () => resolve({ data: Buffer.from('ok') });
+    }));
+    const client = new QidianHttpClient({
+      get: jest.fn((key: string) => ({ qidianMaxConcurrency: 1, qidianMinRequestIntervalMs: 0 }[key])),
+    } as never);
+
+    const first = client.get('https://www.qidian.com/rank/first/');
+    const queued = client.get('https://www.qidian.com/rank/second/');
+    await Promise.resolve();
+    const queuedFailure = queued.catch((error: unknown) => error);
+    (client as unknown as { onModuleDestroy(): void }).onModuleDestroy();
+    completeFirst?.();
+
+    await expect(queuedFailure).resolves.toMatchObject({ message: expect.stringContaining('closed') });
+    await expect(first).resolves.toEqual(Buffer.from('ok'));
+    await Promise.resolve();
+    expect(axiosInstance.get).toHaveBeenCalledTimes(1);
+  });
+
   it('returns response bodies and preserves generic normalized errors', async () => {
     const failure = new AxiosError('offline', 'ERR_NETWORK');
     axiosInstance.get.mockRejectedValue(failure);

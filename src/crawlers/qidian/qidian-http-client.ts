@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpClient, type HttpRequestDelay, type HttpResponse } from '../../axios/http-client';
 
@@ -23,6 +23,7 @@ class QidianRequestGovernor {
   private active = 0;
   private lastStartedAt: number | undefined;
   private delaying = false;
+  private closed = false;
 
   constructor(
     private readonly maxConcurrency: number,
@@ -32,14 +33,28 @@ class QidianRequestGovernor {
   ) {}
 
   run<T>(work: () => Promise<T>): Promise<T> {
+    if (this.closed) return Promise.reject(this.closedError());
+
     return new Promise<T>((resolve, reject) => {
       this.waiting.push({ work, resolve: resolve as (value: unknown) => void, reject });
       this.drain();
     });
   }
 
+  close(): void {
+    if (this.closed) return;
+
+    this.closed = true;
+    const error = this.closedError();
+    this.waiting.splice(0).forEach((request) => request.reject(error));
+  }
+
+  dispose(): void {
+    this.close();
+  }
+
   private drain(): void {
-    if (this.active >= this.maxConcurrency || this.waiting.length === 0 || this.delaying) return;
+    if (this.closed || this.active >= this.maxConcurrency || this.waiting.length === 0 || this.delaying) return;
 
     const elapsed = this.lastStartedAt === undefined ? this.minIntervalMs : this.clock.now() - this.lastStartedAt;
     const remaining = Math.max(0, this.minIntervalMs - elapsed);
@@ -62,12 +77,16 @@ class QidianRequestGovernor {
     });
     this.drain();
   }
+
+  private closedError(): Error {
+    return new Error('Qidian request governor is closed');
+  }
 }
 
 let sharedQidianGovernor: QidianRequestGovernor | undefined;
 
 @Injectable()
-export class QidianHttpClient extends HttpClient {
+export class QidianHttpClient extends HttpClient implements OnModuleDestroy {
   private readonly qidianGovernor: QidianRequestGovernor;
   private readonly userAgent: string;
 
@@ -88,7 +107,13 @@ export class QidianHttpClient extends HttpClient {
   }
 
   static resetQidianGovernanceForTests(): void {
+    sharedQidianGovernor?.close();
     sharedQidianGovernor = undefined;
+  }
+
+  onModuleDestroy(): void {
+    this.qidianGovernor.close();
+    if (sharedQidianGovernor === this.qidianGovernor) sharedQidianGovernor = undefined;
   }
 
   async get(url: string): Promise<Buffer> {
