@@ -59,11 +59,8 @@ export class RankingsService {
       try {
         const snapshot = await this.refresh(platform, rankType);
         results.push({ rankType, success: true, snapshot });
-      } catch (error) {
-        this.logger.error(
-          `Failed to refresh ranking ${platform}/${rankType}`,
-          error instanceof Error ? error.stack : undefined,
-        );
+      } catch {
+        this.logger.error(`Failed to refresh ranking ${platform}/${rankType}`);
         results.push({
           rankType,
           success: false,

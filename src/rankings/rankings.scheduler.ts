@@ -15,6 +15,7 @@ export const RANKINGS_REFRESH_JOB_NAME = "rankings-refresh";
 @Injectable()
 export class RankingsScheduler implements OnModuleInit, OnModuleDestroy {
   private registered = false;
+  private destroyPromise: Promise<void> | undefined;
 
   constructor(
     private readonly rankingsService: RankingsService,
@@ -42,10 +43,19 @@ export class RankingsScheduler implements OnModuleInit, OnModuleDestroy {
     job.start();
   }
 
-  onModuleDestroy(): void {
-    if (this.registered) {
-      this.schedulerRegistry.deleteCronJob(RANKINGS_REFRESH_JOB_NAME);
-      this.registered = false;
+  async onModuleDestroy(): Promise<void> {
+    if (!this.registered) {
+      return;
     }
+
+    this.destroyPromise ??= this.stopAndDeleteCronJob();
+    await this.destroyPromise;
+  }
+
+  private async stopAndDeleteCronJob(): Promise<void> {
+    const job = this.schedulerRegistry.getCronJob(RANKINGS_REFRESH_JOB_NAME);
+    await job.stop();
+    this.schedulerRegistry.deleteCronJob(RANKINGS_REFRESH_JOB_NAME);
+    this.registered = false;
   }
 }

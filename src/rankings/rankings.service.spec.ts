@@ -192,9 +192,68 @@ describe("RankingsService", () => {
       expect(() => JSON.stringify(result)).not.toThrow();
       expect(loggerError).toHaveBeenCalledWith(
         "Failed to refresh ranking qidian/hotsales",
-        sensitiveError.stack,
       );
       expect(repository.saveSnapshot).toHaveBeenCalledTimes(3);
+    });
+
+    it("logs only fixed ranking context for every thrown value", async () => {
+      const { service, rankingCrawler } = createSubject();
+      const loggerError = jest
+        .spyOn(Logger.prototype, "error")
+        .mockImplementation();
+      const failures: Record<CrawledRanking["rankType"], unknown> = {
+        yuepiao: new Error(
+          "failed at C:\\deploy\\token.txt for postgres://admin:secret@db/internal?token=private",
+        ),
+        hotsales: "crawler token=string-secret",
+        recom: {
+          message: "object secret",
+          source: "C:\\deploy\\object.json",
+        },
+        collect: null,
+      };
+      rankingCrawler.crawl.mockImplementation(
+        async (rankType: CrawledRanking["rankType"]) => {
+          throw failures[rankType];
+        },
+      );
+
+      await expect(service.refreshAll("qidian")).resolves.toEqual([
+        {
+          rankType: "yuepiao",
+          success: false,
+          error: "RANKING_REFRESH_FAILED",
+        },
+        {
+          rankType: "hotsales",
+          success: false,
+          error: "RANKING_REFRESH_FAILED",
+        },
+        {
+          rankType: "recom",
+          success: false,
+          error: "RANKING_REFRESH_FAILED",
+        },
+        {
+          rankType: "collect",
+          success: false,
+          error: "RANKING_REFRESH_FAILED",
+        },
+      ]);
+      expect(loggerError.mock.calls).toEqual([
+        ["Failed to refresh ranking qidian/yuepiao"],
+        ["Failed to refresh ranking qidian/hotsales"],
+        ["Failed to refresh ranking qidian/recom"],
+        ["Failed to refresh ranking qidian/collect"],
+      ]);
+
+      const serializedLogs = JSON.stringify(
+        loggerError.mock.calls,
+      ).toLowerCase();
+      expect(serializedLogs).not.toContain("c:\\deploy");
+      expect(serializedLogs).not.toContain("postgres://");
+      expect(serializedLogs).not.toContain("secret");
+      expect(serializedLogs).not.toContain("token");
     });
   });
 });
