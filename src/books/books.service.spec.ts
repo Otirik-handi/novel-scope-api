@@ -4,7 +4,11 @@ import appConfig from "../config/app.config";
 import type { CrawlersService } from "../crawlers/crawlers.service";
 import type { CrawledBook } from "../crawlers/interfaces";
 import type { BooksRepository } from "./books.repository";
-import { BooksService } from "./books.service";
+import {
+  BOOK_REFRESH_FAILED,
+  BookRefreshError,
+  BooksService,
+} from "./books.service";
 
 const now = new Date("2026-07-20T12:30:00.000Z");
 
@@ -28,6 +32,39 @@ const storedBook = {
   bookId: "1c22a340-ff4b-4c2d-a57c-207d75b4c72d",
   expiresAt: new Date("2026-07-20T15:00:00.000Z"),
 };
+
+const invalidCrawledBooks: Array<[string, CrawledBook]> = [
+  [
+    "a different platform",
+    {
+      ...crawledBook,
+      platform: "other" as unknown as CrawledBook["platform"],
+    },
+  ],
+  [
+    "a different external book ID",
+    { ...crawledBook, externalBookId: "9999999999" },
+  ],
+  ["a blank title", { ...crawledBook, title: "   " }],
+  ["a blank author", { ...crawledBook, author: "\t" }],
+  ["a blank source URL", { ...crawledBook, sourceUrl: "" }],
+  ["an unparsable source URL", { ...crawledBook, sourceUrl: "not-a-url" }],
+  [
+    "a non-HTTP source URL",
+    { ...crawledBook, sourceUrl: "ftp://www.qidian.com/book/1031940621/" },
+  ],
+  [
+    "a credential-bearing source URL",
+    {
+      ...crawledBook,
+      sourceUrl: "https://user:secret@www.qidian.com/book/1031940621/",
+    },
+  ],
+  [
+    "an invalid fetchedAt",
+    { ...crawledBook, fetchedAt: new Date(Number.NaN) },
+  ],
+];
 
 function createSubject(currentTime = now) {
   const repository = {
@@ -175,6 +212,67 @@ describe("BooksService", () => {
     expect(repository.upsertDetail).toHaveBeenCalledTimes(1);
   });
 
+  it.each(invalidCrawledBooks)(
+    "rejects a first crawl result with %s without persisting it",
+    async (_reason, invalidBook) => {
+      const { service, repository, bookCrawler } = createSubject();
+      jest.spyOn(Logger.prototype, "error").mockImplementation();
+      repository.findDetail.mockResolvedValue(null);
+      bookCrawler.crawl.mockResolvedValue(invalidBook);
+
+      await expect(
+        service.getDetail("qidian", "1031940621"),
+      ).rejects.toMatchObject({
+        name: "BookRefreshError",
+        message: BOOK_REFRESH_FAILED,
+      });
+      expect(repository.upsertDetail).not.toHaveBeenCalled();
+    },
+  );
+
+  it("serves the unchanged expired detail when the refreshed result is invalid", async () => {
+    const expiredBook = {
+      ...storedBook,
+      title: "最近一次成功标题",
+      fetchedAt: new Date("2026-07-20T08:00:00.000Z"),
+      expiresAt: new Date("2026-07-20T11:00:00.000Z"),
+    };
+    const originalBook = structuredClone(expiredBook);
+    const { service, repository, bookCrawler } = createSubject();
+    const loggerError = jest
+      .spyOn(Logger.prototype, "error")
+      .mockImplementation();
+    repository.findDetail.mockResolvedValue(expiredBook);
+    bookCrawler.crawl.mockResolvedValue({
+      ...crawledBook,
+      externalBookId: "9999999999",
+    });
+
+    await expect(
+      service.getDetail("qidian", "1031940621"),
+    ).resolves.toEqual({ ...originalBook, stale: true });
+    expect(expiredBook).toEqual(originalBook);
+    expect(repository.upsertDetail).not.toHaveBeenCalled();
+    expect(loggerError).toHaveBeenCalledWith(
+      "Failed to refresh book qidian/1031940621; serving stale detail",
+      expect.any(String),
+    );
+  });
+
+  it("propagates an initial database lookup failure without selecting a crawler", async () => {
+    const lookupError = new Error("database lookup failed");
+    const { service, repository, crawlersService, bookCrawler } =
+      createSubject();
+    repository.findDetail.mockRejectedValue(lookupError);
+
+    await expect(
+      service.getDetail("qidian", "1031940621"),
+    ).rejects.toBe(lookupError);
+    expect(crawlersService.getBookCrawler).not.toHaveBeenCalled();
+    expect(bookCrawler.crawl).not.toHaveBeenCalled();
+    expect(repository.upsertDetail).not.toHaveBeenCalled();
+  });
+
   it.each([
     new Error("crawler failed with axios secret details"),
     "non-error first crawl failure",
@@ -190,7 +288,7 @@ describe("BooksService", () => {
 
       await expect(
         service.getDetail("qidian", "1031940621"),
-      ).rejects.toBe(refreshError);
+      ).rejects.toBeInstanceOf(BookRefreshError);
       expect(repository.upsertDetail).not.toHaveBeenCalled();
       expect(loggerError).toHaveBeenCalledWith(
         "Failed to fetch book qidian/1031940621",

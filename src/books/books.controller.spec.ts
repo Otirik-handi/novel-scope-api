@@ -2,7 +2,10 @@ import { BadGatewayException } from "@nestjs/common";
 import { validate } from "class-validator";
 import { BookParamsDto } from "./dto/book-params.dto";
 import { BooksController } from "./books.controller";
-import type { BooksService } from "./books.service";
+import {
+  BookRefreshError,
+  type BooksService,
+} from "./books.service";
 
 describe("book route DTO", () => {
   it.each([
@@ -51,12 +54,11 @@ describe("BooksController", () => {
     ).resolves.toBe(resource);
   });
 
-  it.each([
-    new Error("axios failed with secret-token"),
-    "non-error crawler failure",
-  ])("maps a first crawl failure %p to a safe 502", async (failure) => {
+  it("maps a book refresh domain error to a safe 502", async () => {
     const { controller, service } = createSubject();
-    service.getDetail.mockRejectedValue(failure);
+    service.getDetail.mockRejectedValue(
+      new BookRefreshError(new Error("axios failed with secret-token")),
+    );
 
     let caught: unknown;
     try {
@@ -77,5 +79,15 @@ describe("BooksController", () => {
     expect(
       JSON.stringify((caught as BadGatewayException).getResponse()),
     ).not.toContain("secret");
+  });
+
+  it("rethrows an initial database lookup error for Nest to map to 500", async () => {
+    const { controller, service } = createSubject();
+    const databaseError = new Error("prisma lookup failed");
+    service.getDetail.mockRejectedValue(databaseError);
+
+    await expect(
+      controller.getDetail({ platform: "qidian", bookId: "1031940621" }),
+    ).rejects.toBe(databaseError);
   });
 });
