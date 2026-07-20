@@ -71,6 +71,27 @@ describe('RankingsService', () => {
     );
   });
 
+  it('limits platform refreshes to two concurrent Qidian crawls', async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const store = { read: jest.fn(), write: jest.fn(), recordFailure: jest.fn() };
+    const provider: RankingProvider = {
+      platform: 'qidian',
+      fetch: jest.fn(async (key) => {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return { ...snapshot, rank: key.rank };
+      }),
+    };
+    const service = new RankingsService(store, [provider]);
+
+    await service.refreshPlatform('qidian');
+
+    expect(maximumActive).toBe(2);
+  });
+
   it('writes a successful crawl completion using the whitelisted result', async () => {
     const store = { read: jest.fn(), write: jest.fn(), recordFailure: jest.fn() };
     const provider: RankingProvider = { platform: 'qidian', fetch: jest.fn().mockResolvedValue(snapshot) };

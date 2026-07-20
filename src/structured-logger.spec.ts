@@ -6,12 +6,12 @@ describe('StructuredLogger', () => {
     const logger = new StructuredLogger(write);
 
     logger.httpCompleted({
-      requestId: 'request-1', method: 'POST', path: '/v1/admin/refresh',
+      requestId: 'request-1', method: 'POST', path: '/v1/rankings/qidian/refresh',
       durationMs: 42, statusCode: 201,
     });
 
     expect(write).toHaveBeenCalledWith(
-      `${JSON.stringify({ event: 'http.completed', requestId: 'request-1', method: 'POST', path: '/v1/admin/refresh', durationMs: 42, statusCode: 201 })}\n`,
+      `${JSON.stringify({ event: 'http.completed', requestId: 'request-1', method: 'POST', path: '/v1/rankings/qidian/refresh', durationMs: 42, statusCode: 201 })}\n`,
     );
   });
 

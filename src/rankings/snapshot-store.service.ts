@@ -3,9 +3,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CrawlErrorCode } from '../structured-logger';
 import { RankingKey, RankingSnapshot } from './domain/ranking.types';
 
-// Retained for the separate book-detail cache configuration during its later migration.
-export const SNAPSHOT_DIR = Symbol('SNAPSHOT_DIR');
-
 export function crawlErrorCode(error: unknown): CrawlErrorCode {
   if (error && typeof error === 'object' && 'status' in error && typeof error.status === 'number') return 'UPSTREAM_ERROR';
   const cause = error instanceof Error && 'cause' in error ? error.cause : undefined;
