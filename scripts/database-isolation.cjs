@@ -1,5 +1,7 @@
 const { Client } = require("pg");
 
+const DATABASE_OPERATION_TIMEOUT_MS = 5_000;
+
 const DATABASE_IDENTITY_QUERY = `
   SELECT
     system_identifier::text AS "clusterId",
@@ -13,7 +15,11 @@ const DATABASE_IDENTITY_QUERY = `
 `;
 
 async function probeDatabaseIdentity(databaseUrl) {
-  const client = new Client({ connectionString: databaseUrl });
+  const client = new Client({
+    connectionString: databaseUrl,
+    connectionTimeoutMillis: DATABASE_OPERATION_TIMEOUT_MS,
+    query_timeout: DATABASE_OPERATION_TIMEOUT_MS,
+  });
 
   try {
     await client.connect();
@@ -80,4 +86,8 @@ async function assertDatabaseIsolation(
   }
 }
 
-module.exports = { assertDatabaseIsolation, probeDatabaseIdentity };
+module.exports = {
+  DATABASE_OPERATION_TIMEOUT_MS,
+  assertDatabaseIsolation,
+  probeDatabaseIdentity,
+};

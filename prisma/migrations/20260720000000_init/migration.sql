@@ -77,4 +77,4 @@ ALTER TABLE "BookDetail" ADD CONSTRAINT "BookDetail_bookId_fkey" FOREIGN KEY ("b
 ALTER TABLE "RankingItem" ADD CONSTRAINT "RankingItem_snapshotId_fkey" FOREIGN KEY ("snapshotId") REFERENCES "RankingSnapshot"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RankingItem" ADD CONSTRAINT "RankingItem_bookId_fkey" FOREIGN KEY ("bookId") REFERENCES "Book"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "RankingItem" ADD CONSTRAINT "RankingItem_bookId_fkey" FOREIGN KEY ("bookId") REFERENCES "Book"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -1,4 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { assertDatabaseIsolation } from "../../scripts/database-isolation.cjs";
 
@@ -72,6 +74,46 @@ describe("database schema", () => {
   async function expectUniqueViolation(action: Promise<unknown>) {
     await expect(action).rejects.toMatchObject({ code: "P2002" });
   }
+
+  it("matches repository checksums for every applied migration", async () => {
+    const migrationsDirectory = join(process.cwd(), "prisma", "migrations");
+    const entries = await readdir(migrationsDirectory, { withFileTypes: true });
+    const repositoryChecksums = new Map<string, string>();
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const migration = await readFile(
+        join(migrationsDirectory, entry.name, "migration.sql"),
+      );
+      repositoryChecksums.set(
+        entry.name,
+        createHash("sha256").update(migration).digest("hex"),
+      );
+    }
+
+    const appliedMigrations = await prisma.$queryRaw<
+      Array<{ migrationName: string; checksum: string }>
+    >`
+      SELECT migration_name AS "migrationName", checksum
+      FROM "_prisma_migrations"
+      WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+    `;
+
+    expect(appliedMigrations.length).toBeGreaterThan(0);
+    for (const appliedMigration of appliedMigrations) {
+      if (
+        repositoryChecksums.get(appliedMigration.migrationName) !==
+        appliedMigration.checksum
+      ) {
+        throw new Error(
+          `Applied migration ${appliedMigration.migrationName} checksum does not match repository`,
+        );
+      }
+    }
+  });
 
   it("persists book detail and ranking item relationships", async () => {
     const book = await prisma.book.create({
