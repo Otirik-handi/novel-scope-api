@@ -58,4 +58,18 @@ describe("parseDisplayedNumber", () => {
     expect(parseDisplayedNumber("0.1")).toBe(0.1);
     expect(parseDisplayedNumber("1.2万")).toBe(12_000);
   });
+
+  it("enforces the normalized numeric text length boundary", () => {
+    const boundaryValue = `1.${"0".repeat(126)}`;
+    const overBoundaryValue = `1.${"0".repeat(127)}`;
+
+    expect(boundaryValue).toHaveLength(128);
+    expect(parseDisplayedNumber(boundaryValue)).toBe(1);
+    expect(parseDisplayedNumber(overBoundaryValue)).toBeNull();
+  });
+
+  it("rejects extremely long numeric text before exact conversion", () => {
+    expect(parseDisplayedNumber("9".repeat(50_000))).toBeNull();
+    expect(parseDisplayedNumber(`1.${"0".repeat(50_000)}`)).toBeNull();
+  });
 });

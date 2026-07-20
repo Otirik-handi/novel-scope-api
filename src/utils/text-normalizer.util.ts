@@ -1,5 +1,4 @@
 import { load } from "cheerio";
-import { hasChildren, isTag, isText, type AnyNode } from "domhandler";
 
 const BLOCK_ELEMENT_NAMES = new Set([
   "address",
@@ -44,42 +43,6 @@ const SKIPPED_ELEMENT_NAMES = new Set(["noscript", "script", "style"]);
 
 type HtmlTextToken =
   { type: "text"; value: string } | { type: "break"; source: "block" | "br" };
-
-function collectHtmlTextTokens(node: AnyNode, tokens: HtmlTextToken[]): void {
-  if (isText(node)) {
-    tokens.push({ type: "text", value: node.data.replace(/\s+/g, " ") });
-    return;
-  }
-
-  if (!hasChildren(node)) {
-    return;
-  }
-
-  const elementName = isTag(node) ? node.name.toLowerCase() : undefined;
-
-  if (elementName && SKIPPED_ELEMENT_NAMES.has(elementName)) {
-    return;
-  }
-
-  if (elementName === "br") {
-    tokens.push({ type: "break", source: "br" });
-    return;
-  }
-
-  const isBlock = elementName ? BLOCK_ELEMENT_NAMES.has(elementName) : false;
-
-  if (isBlock) {
-    tokens.push({ type: "break", source: "block" });
-  }
-
-  for (const child of node.children) {
-    collectHtmlTextTokens(child, tokens);
-  }
-
-  if (isBlock) {
-    tokens.push({ type: "break", source: "block" });
-  }
-}
 
 function renderHtmlTextTokens(tokens: HtmlTextToken[]): string {
   let output = "";
@@ -151,10 +114,59 @@ export function normalizePlainText(input: string): string {
 
 export function normalizeHtmlText(input: string): string {
   const $ = load(input, null, false);
+  const rootNodes = $.root().contents().toArray();
   const tokens: HtmlTextToken[] = [];
+  type HtmlNode = (typeof rootNodes)[number];
+  type TraversalFrame =
+    { type: "node"; node: HtmlNode } | { type: "block-exit" };
+  const stack: TraversalFrame[] = [...rootNodes]
+    .reverse()
+    .map((node) => ({ type: "node", node }));
 
-  for (const node of $.root().toArray()) {
-    collectHtmlTextTokens(node, tokens);
+  while (stack.length > 0) {
+    const frame = stack.pop();
+
+    if (!frame) {
+      break;
+    }
+
+    if (frame.type === "block-exit") {
+      tokens.push({ type: "break", source: "block" });
+      continue;
+    }
+
+    const { node } = frame;
+
+    if (node.nodeType === 3 && "data" in node) {
+      tokens.push({ type: "text", value: node.data.replace(/\s+/g, " ") });
+      continue;
+    }
+
+    if (!("children" in node)) {
+      continue;
+    }
+
+    const elementName = "name" in node ? node.name.toLowerCase() : undefined;
+
+    if (elementName && SKIPPED_ELEMENT_NAMES.has(elementName)) {
+      continue;
+    }
+
+    if (elementName === "br") {
+      tokens.push({ type: "break", source: "br" });
+      continue;
+    }
+
+    const isBlock = elementName ? BLOCK_ELEMENT_NAMES.has(elementName) : false;
+
+    if (isBlock) {
+      tokens.push({ type: "break", source: "block" });
+      stack.push({ type: "block-exit" });
+    }
+
+    for (let index = node.children.length - 1; index >= 0; index -= 1) {
+      stack.push({ type: "node", node: node.children[index] });
+    }
   }
 
   return normalizePlainText(renderHtmlTextTokens(tokens));

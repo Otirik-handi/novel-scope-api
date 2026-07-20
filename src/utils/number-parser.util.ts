@@ -1,9 +1,11 @@
 const DISPLAYED_NUMBER_PATTERN =
   /^(?:(?:\d{1,3}(?:,\d{3})+)|\d+)(?:\.\d+)?([万亿])?$/;
 
-const UNIT_MULTIPLIERS: Record<string, bigint> = {
-  万: 10_000n,
-  亿: 100_000_000n,
+const MAX_NUMERIC_TEXT_LENGTH = 128;
+
+const UNIT_DECIMAL_SHIFTS: Record<string, number> = {
+  万: 4,
+  亿: 8,
 };
 
 const MAX_SAFE_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
@@ -13,24 +15,18 @@ interface DecimalRatio {
   denominator: bigint;
 }
 
-function reduceDecimalRatio(ratio: DecimalRatio): DecimalRatio {
-  while (ratio.denominator > 1n && ratio.numerator % 10n === 0n) {
-    ratio.numerator /= 10n;
-    ratio.denominator /= 10n;
-  }
-
-  return ratio;
-}
-
-function parseDecimalRatio(input: string): DecimalRatio | null {
+function parseDecimalRatio(
+  input: string,
+  decimalShift = 0,
+): DecimalRatio | null {
   const match = input.match(/^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i);
 
   if (!match) {
     return null;
   }
 
-  const fraction = match[2] ?? "";
-  const exponent = Number(match[3] ?? 0);
+  const fraction = (match[2] ?? "").replace(/0+$/, "");
+  const exponent = Number(match[3] ?? 0) + decimalShift;
   const digits = `${match[1]}${fraction}`;
   const decimalPlaces = fraction.length - exponent;
   let numerator = BigInt(digits);
@@ -42,7 +38,7 @@ function parseDecimalRatio(input: string): DecimalRatio | null {
     numerator *= 10n ** BigInt(-decimalPlaces);
   }
 
-  return reduceDecimalRatio({ numerator, denominator });
+  return { numerator, denominator };
 }
 
 export function parseDisplayedNumber(
@@ -54,6 +50,17 @@ export function parseDisplayedNumber(
     return null;
   }
 
+  const possibleUnit = normalizedInput.at(-1);
+  const numericInput =
+    possibleUnit && possibleUnit in UNIT_DECIMAL_SHIFTS
+      ? normalizedInput.slice(0, -1)
+      : normalizedInput;
+  const normalizedNumericText = numericInput.replaceAll(",", "");
+
+  if (normalizedNumericText.length > MAX_NUMERIC_TEXT_LENGTH) {
+    return null;
+  }
+
   const match = normalizedInput.match(DISPLAYED_NUMBER_PATTERN);
 
   if (!match) {
@@ -61,17 +68,14 @@ export function parseDisplayedNumber(
   }
 
   const unit = match[1];
-  const numericText = unit
-    ? normalizedInput.slice(0, -unit.length)
-    : normalizedInput;
-  const ratio = parseDecimalRatio(numericText.replaceAll(",", ""));
+  const ratio = parseDecimalRatio(
+    normalizedNumericText,
+    unit ? UNIT_DECIMAL_SHIFTS[unit] : 0,
+  );
 
   if (!ratio) {
     return null;
   }
-
-  ratio.numerator *= unit ? UNIT_MULTIPLIERS[unit] : 1n;
-  reduceDecimalRatio(ratio);
 
   if (ratio.numerator > MAX_SAFE_INTEGER * ratio.denominator) {
     return null;

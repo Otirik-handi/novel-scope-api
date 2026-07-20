@@ -82,4 +82,11 @@ describe("normalizeHtmlText", () => {
 
     expect(normalizeHtmlText(html)).toBe("Outer\nInner one\nInner two\nNext");
   });
+
+  it("normalizes deeply nested blocks without overflowing the call stack", () => {
+    const depth = 6_000;
+    const html = `${"<div>".repeat(depth)}Visible${"</div>".repeat(depth)}`;
+
+    expect(normalizeHtmlText(html)).toBe("Visible");
+  });
 });
