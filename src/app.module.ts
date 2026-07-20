@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { BooksModule } from "./books/books.module";
 import appConfig from "./config/app.config";
 import crawlerConfig from "./config/crawler.config";
 import databaseConfig from "./config/database.config";
@@ -16,6 +17,7 @@ import { DatabaseModule } from "./shared/database/database.module";
     }),
     DatabaseModule,
     RankingsModule,
+    BooksModule,
   ],
 })
 export class AppModule {}
