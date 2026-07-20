@@ -1,7 +1,9 @@
-import type {
-  AxiosAdapter,
-  AxiosResponse,
-  InternalAxiosRequestConfig,
+import {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosAdapter,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
 } from "axios";
 import iconv from "iconv-lite";
 import { QidianClient } from "./qidian.client";
@@ -19,7 +21,7 @@ function createAdapter(
   const adapter: AxiosAdapter = async (config) => {
     requests.push(config);
 
-    return {
+    const result = {
       data: Buffer.from("<html>ok</html>"),
       status: 200,
       statusText: "OK",
@@ -27,6 +29,24 @@ function createAdapter(
       config,
       ...response,
     };
+
+    if (
+      result.status &&
+      config.validateStatus &&
+      !config.validateStatus(result.status)
+    ) {
+      throw new AxiosError(
+        `Request failed with status code ${result.status}`,
+        result.status >= 500
+          ? AxiosError.ERR_BAD_RESPONSE
+          : AxiosError.ERR_BAD_REQUEST,
+        config,
+        undefined,
+        result,
+      );
+    }
+
+    return result;
   };
 
   return { adapter, requests };
@@ -98,6 +118,37 @@ describe("QidianClient", () => {
     });
   });
 
+  it.each(["Content-Type", "CONTENT-TYPE"])(
+    "decodes a string-array %s header using its first non-empty value",
+    async (headerName) => {
+      const html = "<html><body>收藏榜</body></html>";
+      const { adapter } = createAdapter({
+        data: iconv.encode(html, "gb18030"),
+        headers: {
+          [headerName]: ["", "text/html; charset=gb18030"],
+        },
+      });
+
+      await expect(
+        createClient(adapter).fetchPage("/rank/collect/"),
+      ).resolves.toMatchObject({ html });
+    },
+  );
+
+  it("reads Content-Type through AxiosHeaders.get", async () => {
+    const html = "<html><body>畅销榜</body></html>";
+    const headers = new AxiosHeaders();
+    headers.set("Content-Type", "text/html; charset=gb18030");
+    const { adapter } = createAdapter({
+      data: iconv.encode(html, "gb18030"),
+      headers,
+    });
+
+    await expect(
+      createClient(adapter).fetchPage("/rank/hotsales/"),
+    ).resolves.toMatchObject({ html });
+  });
+
   it.each([
     "//example.com/rank/yuepiao/",
     "https://example.com/rank/yuepiao/",
@@ -166,12 +217,29 @@ describe("QidianClient", () => {
 
   it("does not treat an ordinary login mention as a login wall", async () => {
     const html =
-      "<html><head><title>书籍详情</title></head><body><p>登录后可以发表评论</p></body></html>";
+      '<html><head><title>书籍详情</title></head><body><a class="login-link" href="/login">登录</a><p>登录后可以发表评论</p></body></html>';
     const { adapter } = createAdapter({ data: Buffer.from(html) });
 
     await expect(
       createClient(adapter).fetchPage("/book/123/"),
     ).resolves.toMatchObject({ html });
+  });
+
+  it.each([
+    '<form class="panel login-form" method="post"></form>',
+    '<form method="post" action="/login"></form>',
+  ])("detects a structured login wall form: %s", async (form) => {
+    const html = `<html><head><title>起点中文网</title></head><body>${form}</body></html>`;
+    const { adapter, requests } = createAdapter({ data: Buffer.from(html) });
+
+    await expect(
+      createClient(adapter).fetchPage("/rank/yuepiao/"),
+    ).rejects.toMatchObject({
+      code: "QIDIAN_ACCESS_BLOCKED",
+      name: "QidianClientError",
+      reason: "login",
+    });
+    expect(requests).toHaveLength(1);
   });
 
   it("does not retry a failed request", async () => {
@@ -186,5 +254,58 @@ describe("QidianClient", () => {
       createClient(adapter).fetchPage("/rank/yuepiao/"),
     ).rejects.toBe(failure);
     expect(requests).toBe(1);
+  });
+
+  it.each([
+    {
+      status: 403,
+      html: "<html><title>安全验证</title><body>验证码</body></html>",
+      reason: "captcha",
+    },
+    {
+      status: 403,
+      html: "<html><title>Access Denied</title></html>",
+      reason: "access-denied",
+    },
+    {
+      status: 401,
+      html: "<html><title>用户登录 | 起点中文网</title></html>",
+      reason: "login",
+    },
+    {
+      status: 429,
+      html: "<html><title>请求过于频繁</title></html>",
+      reason: "access-denied",
+    },
+  ])(
+    "maps HTTP $status access control responses to $reason",
+    async ({ status, html, reason }) => {
+      const { adapter, requests } = createAdapter({
+        data: Buffer.from(html),
+        status,
+      });
+
+      await expect(
+        createClient(adapter).fetchPage("/rank/yuepiao/"),
+      ).rejects.toMatchObject({
+        code: "QIDIAN_ACCESS_BLOCKED",
+        name: "QidianClientError",
+        reason,
+      });
+      expect(requests).toHaveLength(1);
+    },
+  );
+
+  it("preserves Axios rejection for other HTTP errors", async () => {
+    const { adapter, requests } = createAdapter({ status: 500 });
+
+    await expect(
+      createClient(adapter).fetchPage("/rank/yuepiao/"),
+    ).rejects.toMatchObject({
+      code: AxiosError.ERR_BAD_RESPONSE,
+      name: "AxiosError",
+      status: 500,
+    });
+    expect(requests).toHaveLength(1);
   });
 });

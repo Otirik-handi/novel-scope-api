@@ -1,4 +1,5 @@
 import axios, { type AxiosAdapter, type AxiosInstance } from "axios";
+import { load } from "cheerio";
 import { decodeBuffer } from "../../utils/charset.util";
 import {
   QIDIAN_ACCEPT,
@@ -25,6 +26,8 @@ export type QidianAccessBlockReason =
   | "captcha"
   | "login"
   | "access-denied";
+
+const ACCESS_CONTROL_HTTP_STATUSES = new Set([401, 403, 429]);
 
 export class QidianClientError extends Error {
   override readonly name = "QidianClientError";
@@ -57,22 +60,27 @@ export class QidianClient {
         },
         responseType: "arraybuffer",
         timeout: this.options.requestTimeoutMs,
+        validateStatus: (status) =>
+          (status >= 200 && status < 300) ||
+          ACCESS_CONTROL_HTTP_STATUSES.has(status),
       },
     );
     const sourceUrl = this.resolveTrustedUrl(
       this.extractFinalUrl(response.request) ?? requestUrl.href,
     ).href;
-    const contentType = response.headers["content-type"];
+    const contentType = this.getHeaderString(
+      response.headers,
+      "content-type",
+    );
     const bytes =
       response.data instanceof ArrayBuffer
         ? new Uint8Array(response.data)
         : response.data;
 
-    const html = decodeBuffer(
-      bytes,
-      typeof contentType === "string" ? contentType : undefined,
-    );
-    const blockReason = this.detectAccessBlock(html, sourceUrl);
+    const html = decodeBuffer(bytes, contentType);
+    const blockReason =
+      this.detectAccessBlock(html, sourceUrl) ??
+      this.getStatusBlockReason(response.status);
 
     if (blockReason) {
       throw new QidianClientError(
@@ -83,6 +91,58 @@ export class QidianClient {
     }
 
     return { html, sourceUrl };
+  }
+
+  private getStatusBlockReason(
+    status: number,
+  ): QidianAccessBlockReason | undefined {
+    if (status === 401) {
+      return "login";
+    }
+
+    if (status === 403 || status === 429) {
+      return "access-denied";
+    }
+
+    return undefined;
+  }
+
+  private getHeaderString(headers: unknown, name: string): string | undefined {
+    if (typeof headers !== "object" || headers === null) {
+      return undefined;
+    }
+
+    const getter = (headers as { get?: unknown }).get;
+
+    if (typeof getter === "function") {
+      const value = (getter as (headerName: string) => unknown).call(
+        headers,
+        name,
+      );
+      const header = this.firstNonEmptyString(value);
+
+      if (header) {
+        return header;
+      }
+    }
+
+    const entry = Object.entries(headers).find(
+      ([headerName]) => headerName.toLowerCase() === name.toLowerCase(),
+    );
+
+    return this.firstNonEmptyString(entry?.[1]);
+  }
+
+  private firstNonEmptyString(value: unknown): string | undefined {
+    const values = Array.isArray(value) ? value : [value];
+
+    for (const candidate of values) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate;
+      }
+    }
+
+    return undefined;
   }
 
   private resolveTrustedUrl(pathOrUrl: string): URL {
@@ -137,6 +197,10 @@ export class QidianClient {
       return "login";
     }
 
+    if (this.hasStructuredLoginForm(html)) {
+      return "login";
+    }
+
     if (/^\/login(?:\/|$)/i.test(new URL(sourceUrl).pathname)) {
       return "login";
     }
@@ -150,6 +214,38 @@ export class QidianClient {
     }
 
     return undefined;
+  }
+
+  private hasStructuredLoginForm(html: string): boolean {
+    if (!/<form\b/i.test(html)) {
+      return false;
+    }
+
+    const $ = load(html);
+
+    return $("form")
+      .toArray()
+      .some((form) => {
+        const element = $(form);
+
+        if (element.hasClass("login-form")) {
+          return true;
+        }
+
+        const action = element.attr("action")?.trim();
+
+        if (!action) {
+          return false;
+        }
+
+        try {
+          const actionUrl = new URL(action, QIDIAN_BASE_URL);
+
+          return /^\/login(?:\/|\.html|$)/i.test(actionUrl.pathname);
+        } catch {
+          return false;
+        }
+      });
   }
 
   private extractFinalUrl(request: unknown): string | undefined {
