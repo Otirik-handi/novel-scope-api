@@ -11,14 +11,13 @@ import {
 } from "../../../utils/text-normalizer.util";
 import { QIDIAN_BASE_URL } from "../qidian.constants";
 
-const EMBEDDED_JSON_SELECTOR = [
-  "script#book-detail-data[type='application/json']",
+const EMBEDDED_JSON_SELECTORS = [
   "script#vite-plugin-ssr_pageContext[type='application/json']",
+  "script#book-detail-data[type='application/json']",
   "script#__NEXT_DATA__[type='application/json']",
   "script[type='application/ld+json']",
-].join(", ");
+] as const;
 
-const MAX_JSON_OBJECTS_TO_SCAN = 10_000;
 const MAX_JSON_VALUE_DEPTH = 64;
 const MAX_JSON_VALUES_TO_VALIDATE = 10_000;
 
@@ -73,26 +72,35 @@ export class QidianBookParser {
     $: ReturnType<typeof load>,
     sourceBookId: string,
   ): QidianBookFields | null {
-    for (const script of $(EMBEDDED_JSON_SELECTOR).toArray()) {
-      const json = $(script).html()?.trim();
+    for (const selector of EMBEDDED_JSON_SELECTORS) {
+      for (const script of $(selector).toArray()) {
+        const element = $(script);
+        const json = element.html()?.trim();
 
-      if (!json) {
-        continue;
-      }
+        if (!json) {
+          continue;
+        }
 
-      let value: unknown;
+        let value: unknown;
 
-      try {
-        value = JSON.parse(json) as unknown;
-      } catch {
-        continue;
-      }
+        try {
+          value = JSON.parse(json) as unknown;
+        } catch {
+          continue;
+        }
 
-      for (const object of this.findJsonObjects(value)) {
-        const fields = this.fieldsFromJsonObject(object);
+        const candidates = this.getAuthoritativeBookObjects(
+          value,
+          element.attr("id"),
+          element.attr("type"),
+        );
 
-        if (fields && fields.externalBookId === sourceBookId) {
-          return fields;
+        for (const object of candidates) {
+          const fields = this.fieldsFromJsonObject(object);
+
+          if (fields && fields.externalBookId === sourceBookId) {
+            return fields;
+          }
         }
       }
     }
@@ -100,40 +108,82 @@ export class QidianBookParser {
     return null;
   }
 
-  private *findJsonObjects(
+  private getAuthoritativeBookObjects(
     value: unknown,
-  ): Generator<Record<string, unknown>> {
-    const queue: unknown[] = [value];
-
-    for (
-      let index = 0;
-      index < queue.length && index < MAX_JSON_OBJECTS_TO_SCAN;
-      index += 1
-    ) {
-      const current = queue[index];
-
-      if (Array.isArray(current)) {
-        this.enqueueJsonValues(queue, current);
-        continue;
-      }
-
-      if (!this.isObject(current)) {
-        continue;
-      }
-
-      yield current;
-      this.enqueueJsonValues(queue, Object.values(current));
+    scriptId: string | undefined,
+    scriptType: string | undefined,
+  ): Record<string, unknown>[] {
+    if (scriptId === "vite-plugin-ssr_pageContext") {
+      return this.objectsAtPaths(value, [
+        ["pageContext", "pageProps", "pageData", "bookInfo"],
+        ["pageContext", "pageProps", "pageData", "book"],
+        ["pageContext", "pageProps", "bookInfo"],
+      ]);
     }
+
+    if (scriptId === "book-detail-data") {
+      const candidates = this.objectsAtPaths(value, [
+        ["book"],
+        ["page", "book"],
+        ["pageData", "bookInfo"],
+        ["bookInfo"],
+      ]);
+
+      return this.isObject(value) ? [...candidates, value] : candidates;
+    }
+
+    if (scriptId === "__NEXT_DATA__") {
+      return this.objectsAtPaths(value, [
+        ["props", "pageProps", "book"],
+        ["props", "pageProps", "bookInfo"],
+        ["props", "pageProps", "pageData", "bookInfo"],
+      ]);
+    }
+
+    if (scriptType?.toLowerCase() === "application/ld+json") {
+      const candidates = Array.isArray(value) ? value : [value];
+
+      return candidates.filter(
+        (candidate): candidate is Record<string, unknown> =>
+          this.isObject(candidate) && this.isBookJsonLd(candidate["@type"]),
+      );
+    }
+
+    return [];
   }
 
-  private enqueueJsonValues(queue: unknown[], values: unknown[]): void {
-    for (const value of values) {
-      if (queue.length >= MAX_JSON_OBJECTS_TO_SCAN) {
-        return;
+  private objectsAtPaths(
+    value: unknown,
+    paths: string[][],
+  ): Record<string, unknown>[] {
+    return paths
+      .map((path) => this.objectAtPath(value, path))
+      .filter((object): object is Record<string, unknown> => object !== null);
+  }
+
+  private objectAtPath(
+    value: unknown,
+    path: string[],
+  ): Record<string, unknown> | null {
+    let current = value;
+
+    for (const key of path) {
+      if (!this.isObject(current)) {
+        return null;
       }
 
-      queue.push(value);
+      current = current[key];
     }
+
+    return this.isObject(current) ? current : null;
+  }
+
+  private isBookJsonLd(value: unknown): boolean {
+    const types = Array.isArray(value) ? value : [value];
+
+    return types.some(
+      (type) => typeof type === "string" && type.toLowerCase() === "book",
+    );
   }
 
   private fieldsFromJsonObject(

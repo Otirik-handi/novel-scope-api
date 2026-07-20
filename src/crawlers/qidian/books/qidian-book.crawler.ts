@@ -22,10 +22,31 @@ export class QidianBookCrawler implements BookCrawler {
       `${QIDIAN_BOOK_PATH_PREFIX}${externalBookId}/`,
     );
 
+    if (!this.matchesRequestedBook(page.sourceUrl, externalBookId)) {
+      throw new QidianBookCrawlerError(
+        "Qidian book final URL does not match requested book ID",
+      );
+    }
+
     return this.parser.parse({
       html: page.html,
       sourceUrl: page.sourceUrl,
       fetchedAt: new Date(),
     });
+  }
+
+  private matchesRequestedBook(
+    sourceUrl: string,
+    externalBookId: string,
+  ): boolean {
+    try {
+      const match = new URL(sourceUrl).pathname.match(
+        /^\/book\/(\d+)(?:\/|$)/,
+      );
+
+      return match?.[1] === externalBookId;
+    } catch {
+      return false;
+    }
   }
 }

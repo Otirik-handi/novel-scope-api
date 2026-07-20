@@ -39,6 +39,23 @@ describe("QidianBookParser", () => {
     });
   });
 
+  it("uses the authoritative bookInfo instead of an earlier recommendation", () => {
+    const sourceUrl = "https://www.qidian.com/book/3700000001/";
+
+    const result = parser.parse({
+      html: fixture("book-authoritative-json.html"),
+      sourceUrl,
+      fetchedAt: FETCHED_AT,
+    });
+
+    expect(result).toMatchObject({
+      externalBookId: "3700000001",
+      title: "权威详情标题",
+      author: "权威详情作者",
+      description: "权威详情简介",
+    });
+  });
+
   it("falls back to the book DOM when embedded JSON is unavailable", () => {
     const sourceUrl = "https://www.qidian.com/book/3200000001/";
 

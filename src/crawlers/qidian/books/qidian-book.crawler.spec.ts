@@ -38,6 +38,24 @@ describe("QidianBookCrawler", () => {
     });
   });
 
+  it("rejects a final URL for a different Qidian book", async () => {
+    const page: QidianPage = {
+      html: `
+        <script id="book-detail-data" type="application/json">
+          {"book":{"bookId":"3100000002","title":"另一作品","author":"另一作者"}}
+        </script>
+      `,
+      sourceUrl: "https://www.qidian.com/book/3100000002/?from=redirect",
+    };
+    const fetchPage = jest.fn<Promise<QidianPage>, [string]>();
+    fetchPage.mockResolvedValue(page);
+    const crawler = new QidianBookCrawler({ fetchPage });
+
+    await expect(crawler.crawl("3100000001")).rejects.toThrow(
+      "Qidian book final URL does not match requested book ID",
+    );
+  });
+
   it.each(["", " 3100000001", "3100000001/chapters", "abc"])(
     "rejects an invalid Qidian book ID before requesting it: %j",
     async (externalBookId) => {
