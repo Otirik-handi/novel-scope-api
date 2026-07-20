@@ -6,6 +6,7 @@ import appConfig from "./config/app.config";
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const applicationConfig = app.get<ConfigType<typeof appConfig>>(
     appConfig.KEY,
   );

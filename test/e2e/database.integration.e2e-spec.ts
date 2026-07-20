@@ -1,25 +1,31 @@
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { assertDatabaseIsolation } from "../../scripts/database-isolation.cjs";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
 const applicationDatabaseUrl = process.env.DATABASE_URL?.trim();
 
-if (!testDatabaseUrl) {
-  throw new Error("TEST_DATABASE_URL is required for database integration tests");
-}
-
-if (applicationDatabaseUrl && testDatabaseUrl === applicationDatabaseUrl) {
-  throw new Error("TEST_DATABASE_URL must differ from DATABASE_URL");
-}
-
 describe("database schema", () => {
   const prisma = new PrismaClient({
-    datasources: { db: { url: testDatabaseUrl } },
+    datasources: { db: { url: testDatabaseUrl ?? "" } },
   });
   const createdBookIds = new Set<string>();
   const createdSnapshotIds = new Set<string>();
+  let isolationVerified = false;
+
+  beforeAll(async () => {
+    await assertDatabaseIsolation({
+      applicationDatabaseUrl,
+      testDatabaseUrl,
+    });
+    isolationVerified = true;
+  });
 
   afterEach(async () => {
+    if (!isolationVerified) {
+      return;
+    }
+
     if (createdSnapshotIds.size > 0) {
       await prisma.rankingSnapshot.deleteMany({
         where: { id: { in: [...createdSnapshotIds] } },
@@ -176,7 +182,7 @@ describe("database schema", () => {
     );
   });
 
-  it("cascades deletion from snapshots and books", async () => {
+  it("preserves historical ranking items until their snapshot is deleted", async () => {
     const book = await prisma.book.create({
       data: {
         ...bookData("cascade"),
@@ -207,34 +213,26 @@ describe("database schema", () => {
       },
     });
 
+    await expect(
+      prisma.book.delete({ where: { id: book.id } }),
+    ).rejects.toMatchObject({ code: "P2003" });
+    expect(
+      await prisma.rankingItem.findUnique({ where: { id: item.id } }),
+    ).not.toBeNull();
+    expect(
+      await prisma.bookDetail.findUnique({ where: { bookId: book.id } }),
+    ).not.toBeNull();
+
     await prisma.rankingSnapshot.delete({ where: { id: snapshot.id } });
     createdSnapshotIds.delete(snapshot.id);
     expect(
       await prisma.rankingItem.findUnique({ where: { id: item.id } }),
     ).toBeNull();
 
-    const secondSnapshot = await prisma.rankingSnapshot.create({
-      data: snapshotData("book-cascade"),
-    });
-    const secondItem = await prisma.rankingItem.create({
-      data: {
-        snapshotId: secondSnapshot.id,
-        bookId: book.id,
-        rank: 1,
-        externalBookId: book.externalBookId,
-        title: "测试作品",
-        author: "测试作者",
-        sourceUrl: "https://book.qidian.com/info/cascade",
-      },
-    });
-
     await prisma.book.delete({ where: { id: book.id } });
     createdBookIds.delete(book.id);
     expect(
       await prisma.bookDetail.findUnique({ where: { bookId: book.id } }),
-    ).toBeNull();
-    expect(
-      await prisma.rankingItem.findUnique({ where: { id: secondItem.id } }),
     ).toBeNull();
   });
 });

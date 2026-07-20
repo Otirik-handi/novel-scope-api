@@ -9,7 +9,7 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
-    "lint": "eslint \"src/**/*.ts\"",
+    "lint": "eslint .",
     "test:db": "node scripts/run-database-integration-tests.cjs",
     "db:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",

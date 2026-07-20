@@ -27,6 +27,7 @@ describe("bootstrap", () => {
     const applicationConfig = { port: 3100 };
     const configService = { getOrThrow: () => 3100 };
     const application = {
+      enableShutdownHooks: jest.fn(),
       get: jest.fn((token: unknown) =>
         token === appConfig.KEY ? applicationConfig : configService,
       ),
@@ -42,6 +43,10 @@ describe("bootstrap", () => {
       await new Promise<void>((resolve) => setImmediate(resolve));
 
       expect(application.get).toHaveBeenCalledWith(appConfig.KEY);
+      expect(application.enableShutdownHooks).toHaveBeenCalledTimes(1);
+      expect(
+        application.enableShutdownHooks.mock.invocationCallOrder[0],
+      ).toBeLessThan(application.listen.mock.invocationCallOrder[0]);
       expect(application.listen).toHaveBeenCalledWith(3100);
     } finally {
       jest.restoreAllMocks();
