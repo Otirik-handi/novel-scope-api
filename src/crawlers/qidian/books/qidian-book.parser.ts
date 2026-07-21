@@ -1,16 +1,17 @@
-import { load } from "cheerio";
+﻿import { load } from 'cheerio';
 import type {
   CrawlerJsonObject,
   CrawlerJsonValue,
   CrawledBook,
-} from "../../interfaces";
-import { parseDisplayedNumber } from "../../../utils/number-parser.util";
+} from '../../interfaces';
+import { parseDisplayedNumber } from '../../../utils/number-parser.util';
 import {
   normalizeHtmlNodesText,
   normalizeHtmlText,
   normalizePlainText,
-} from "../../../utils/text-normalizer.util";
-import { QIDIAN_BASE_URL } from "../qidian.constants";
+} from '../../../utils/text-normalizer.util';
+import { QIDIAN_BASE_URL } from '../qidian.constants';
+import { Logger } from '@nestjs/common';
 
 const EMBEDDED_JSON_SELECTORS = [
   "script#vite-plugin-ssr_pageContext[type='application/json']",
@@ -42,32 +43,49 @@ export interface QidianBookParseInput {
 }
 
 export class QidianBookParseError extends Error {
-  override readonly name = "QidianBookParseError";
+  override readonly name = 'QidianBookParseError';
 }
 
 export class QidianBookParser {
+  logger = new Logger(QidianBookParser.name);
   parse(input: QidianBookParseInput): CrawledBook {
     const sourceBookId = this.parseSourceBookId(input.sourceUrl);
 
     if (!sourceBookId) {
-      throw new QidianBookParseError("Qidian book is missing required fields");
+      throw new QidianBookParseError('Qidian book is missing required fields');
     }
 
     const $ = load(input.html);
-    const fields =
-      this.parseEmbeddedJson($, sourceBookId) ??
-      this.parseDom($, sourceBookId);
+    const embeddedFields = this.parseEmbeddedJson($, sourceBookId);
 
-    if (!fields) {
-      throw new QidianBookParseError("Qidian book is missing required fields");
+    if (embeddedFields) {
+      const fields = this.enhanceFieldsFromDom($, embeddedFields);
+      this.logger.debug(
+        `parsed via embedded JSON + DOM enhancement: ${fields.title}`,
+      );
+
+      return {
+        platform: 'qidian',
+        ...fields,
+        sourceUrl: input.sourceUrl,
+        fetchedAt: input.fetchedAt,
+      };
     }
 
-    return {
-      platform: "qidian",
-      ...fields,
-      sourceUrl: input.sourceUrl,
-      fetchedAt: input.fetchedAt,
-    };
+    const domFields = this.parseDom($, sourceBookId);
+
+    if (domFields) {
+      this.logger.debug(`parsed via DOM fallback: ${domFields.title}`);
+
+      return {
+        platform: 'qidian',
+        ...domFields,
+        sourceUrl: input.sourceUrl,
+        fetchedAt: input.fetchedAt,
+      };
+    }
+
+    throw new QidianBookParseError('Qidian book is missing required fields');
   }
 
   private parseEmbeddedJson(
@@ -93,8 +111,8 @@ export class QidianBookParser {
 
         const candidates = this.getAuthoritativeBookObjects(
           value,
-          element.attr("id"),
-          element.attr("type"),
+          element.attr('id'),
+          element.attr('type'),
         );
 
         for (const object of candidates) {
@@ -115,40 +133,58 @@ export class QidianBookParser {
     scriptId: string | undefined,
     scriptType: string | undefined,
   ): Record<string, unknown>[] {
-    if (scriptId === "vite-plugin-ssr_pageContext") {
+    if (scriptId === 'vite-plugin-ssr_pageContext') {
       return this.objectsAtPaths(value, [
-        ["pageContext", "pageProps", "pageData", "bookInfo"],
-        ["pageContext", "pageProps", "pageData", "book"],
-        ["pageContext", "pageProps", "bookInfo"],
+        ['pageContext', 'pageProps', 'pageData', 'bookInfo'],
+        ['pageContext', 'pageProps', 'pageData', 'book'],
+        ['pageContext', 'pageProps', 'bookInfo'],
       ]);
     }
 
-    if (scriptId === "book-detail-data") {
+    if (scriptId === 'book-detail-data') {
       const candidates = this.objectsAtPaths(value, [
-        ["book"],
-        ["page", "book"],
-        ["pageData", "bookInfo"],
-        ["bookInfo"],
+        ['book'],
+        ['page', 'book'],
+        ['pageData', 'bookInfo'],
+        ['bookInfo'],
       ]);
 
       return this.isObject(value) ? [...candidates, value] : candidates;
     }
 
-    if (scriptId === "__NEXT_DATA__") {
+    if (scriptId === '__NEXT_DATA__') {
       return this.objectsAtPaths(value, [
-        ["props", "pageProps", "book"],
-        ["props", "pageProps", "bookInfo"],
-        ["props", "pageProps", "pageData", "bookInfo"],
+        ['props', 'pageProps', 'book'],
+        ['props', 'pageProps', 'bookInfo'],
+        ['props', 'pageProps', 'pageData', 'bookInfo'],
       ]);
     }
 
-    if (scriptType?.toLowerCase() === "application/ld+json") {
-      const candidates = Array.isArray(value) ? value : [value];
+    if (scriptType?.toLowerCase() === 'application/ld+json') {
+      const items = this.flattenGraph(value);
 
-      return candidates.filter(
-        (candidate): candidate is Record<string, unknown> =>
-          this.isObject(candidate) && this.isBookJsonLd(candidate["@type"]),
+      return items.filter(
+        (item): item is Record<string, unknown> =>
+          this.isObject(item) && this.isBookJsonLd(item['@type']),
       );
+    }
+
+    return [];
+  }
+
+  private flattenGraph(value: unknown): unknown[] {
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => this.flattenGraph(item));
+    }
+
+    if (this.isObject(value)) {
+      const graph = value['@graph'];
+
+      if (Array.isArray(graph)) {
+        return graph.flatMap((item) => this.flattenGraph(item));
+      }
+
+      return [value];
     }
 
     return [];
@@ -184,7 +220,7 @@ export class QidianBookParser {
     const types = Array.isArray(value) ? value : [value];
 
     return types.some(
-      (type) => typeof type === "string" && type.toLowerCase() === "book",
+      (type) => typeof type === 'string' && type.toLowerCase() === 'book',
     );
   }
 
@@ -192,15 +228,30 @@ export class QidianBookParser {
     object: Record<string, unknown>,
   ): QidianBookFields | null {
     const externalBookId = this.stringValue(
-      object.bookId ?? object.bookID ?? object.bid,
+      object.bookId ??
+        object.bookID ??
+        object.bid ??
+        this.bookIdFromIdentifier(object.identifier),
     );
-    const title = this.stringValue(object.title ?? object.bookName ?? object.name);
+    const title = this.stringValue(
+      object.title ?? object.bookName ?? object.name,
+    );
     const author = this.authorValue(
       object.author ?? object.authorName ?? object.writer,
     );
 
     if (!externalBookId || !title || !author) {
       return null;
+    }
+
+    const metadata: Record<string, unknown> = this.isObject(object.metadata) ? { ...(object.metadata as Record<string, unknown>) } : {};
+
+    if (typeof object.datePublished === 'string') {
+      metadata.datePublished = object.datePublished;
+    }
+
+    if (typeof object.dateModified === 'string') {
+      metadata.dateModified = object.dateModified;
     }
 
     return {
@@ -217,61 +268,286 @@ export class QidianBookParser {
         object.genres ??
           object.categories ??
           object.category ??
+          object.genre ??
           [object.chanName, object.subCateName],
       ),
-      bookStatus: this.nullableString(
-        object.bookStatus ?? object.status ?? object.updateStatus,
-      ),
+      bookStatus: this.nullableString(object.bookStatus ?? object.status ?? object.updateStatus) ?? this.statusFromAdditionalProperty(object.additionalProperty),
       wordCount: this.numberValue(
         object.wordCount ??
           object.words ??
           object.totalWords ??
           object.wordsCnt,
       ),
-      metadata: this.jsonObjectValue(object.metadata),
+      metadata: this.jsonObjectValue(metadata),
     };
+  }
+
+  private statusFromAdditionalProperty(value: unknown): string | null {
+    if (!Array.isArray(value)) {
+      return null;
+    }
+
+    for (const prop of value) {
+      if (
+        this.isObject(prop) &&
+        typeof prop.name === 'string' &&
+        /连载状态/.test(prop.name)
+      ) {
+        return this.stringValue(prop.value);
+      }
+    }
+
+    return null;
+  }
+
+  private bookIdFromIdentifier(value: unknown): string | null {
+    if (!this.isObject(value)) {
+      return null;
+    }
+
+    return this.stringValue(value.value);
+  }
+
+  private enhanceFieldsFromDom(
+    $: ReturnType<typeof load>,
+    fields: QidianBookFields,
+  ): QidianBookFields {
+    if (!fields.bookStatus) {
+      const statusSpan = $('p.book-attribute > span')
+        .toArray()
+        .find((node) => {
+          const classes = $(node).attr('class') ?? '';
+
+          return !classes.includes('dot');
+        });
+
+      if (statusSpan) {
+        const status = normalizeHtmlNodesText(
+          $(statusSpan).contents().toArray(),
+        );
+
+        if (status) {
+          fields.bookStatus = status;
+        }
+      }
+    }
+
+    if (fields.bookStatus === null) {
+      const ogStatus = $(
+        'meta[property="og:novel:status"]',
+      ).attr('content');
+
+      if (ogStatus) {
+        fields.bookStatus = normalizePlainText(ogStatus);
+      }
+    }
+
+    const countParent = $('p.count').first();
+
+    if (fields.wordCount === null) {
+      const wordCountEm = countParent.find('em').first();
+      const wordCountText = normalizeHtmlNodesText(
+        wordCountEm.contents().toArray(),
+      );
+
+      if (wordCountText) {
+        fields.wordCount = this.numberValue(wordCountText);
+      }
+    }
+
+    const metadata: Record<string, unknown> = {
+      ...(fields.metadata as Record<string, unknown>),
+    };
+
+    const updateTime = $('span.update-time').first();
+    const updateTimeText = normalizeHtmlNodesText(
+      updateTime.contents().toArray(),
+    );
+
+    if (updateTimeText) {
+      metadata.updateTime = updateTimeText;
+    }
+
+    const statEmElements = countParent.find('em').toArray();
+
+    if (statEmElements.length >= 2) {
+      const totalRecText = normalizeHtmlNodesText(
+        $(statEmElements[1]).contents().toArray(),
+      );
+
+      if (totalRecText) {
+        const parsed = this.numberValue(totalRecText);
+
+        if (parsed !== null) {
+          metadata.totalRecommendations = parsed;
+        }
+      }
+    }
+
+    if (statEmElements.length >= 3) {
+      const weeklyRecText = normalizeHtmlNodesText(
+        $(statEmElements[2]).contents().toArray(),
+      );
+
+      if (weeklyRecText) {
+        const parsed = this.numberValue(weeklyRecText);
+
+        if (parsed !== null) {
+          metadata.weeklyRecommendations = parsed;
+        }
+      }
+    }
+
+    fields.metadata = this.jsonObjectValue(metadata);
+
+    return fields;
   }
 
   private parseDom(
     $: ReturnType<typeof load>,
     sourceBookId: string,
   ): QidianBookFields | null {
-    const root = $(".book-information, [data-book-id]").first();
-    const domBookId = this.stringValue(root.attr("data-book-id")) ?? sourceBookId;
-    const titleElement = root.find("h1 em, h1 .book-title, h1").first();
+    const title = normalizeHtmlNodesText(
+      $('#bookName').contents().toArray(),
+    );
+
+    if (!title) {
+      return this.parseDomLegacy($, sourceBookId);
+    }
+
+    const author = normalizeHtmlNodesText(
+      $('span.author').first().contents().toArray(),
+    );
+
+    if (!title || !author) {
+      return null;
+    }
+
+    const description = normalizeHtmlNodesText(
+      $('#book-intro-detail').contents().toArray(),
+    );
+    const coverImg = $('.book-img img').first();
+    const coverUrl = this.urlValue(
+      coverImg.attr('data-src') ?? coverImg.attr('src'),
+    );
+    const genres = $('p.book-attribute > a')
+      .toArray()
+      .map((node) =>
+        normalizeHtmlNodesText($(node).contents().toArray()),
+      )
+      .filter((genre): genre is string => Boolean(genre));
+    const statusSpan = $('p.book-attribute > span')
+      .toArray()
+      .find((node) => {
+        const classes = $(node).attr('class') ?? '';
+
+        return !classes.includes('dot');
+      });
+    const bookStatus = statusSpan
+      ? normalizeHtmlNodesText($(statusSpan).contents().toArray()) ?? null
+      : null;
+    const countParent = $('p.count').first();
+    const wordCountEm = countParent.find('em').first();
+    const wordCountText = normalizeHtmlNodesText(
+      wordCountEm.contents().toArray(),
+    );
+    const wordCount = wordCountText
+      ? this.numberValue(wordCountText)
+      : null;
+    const metadata: Record<string, unknown> = {};
+    const updateTime = $('span.update-time').first();
+    const updateTimeText = normalizeHtmlNodesText(
+      updateTime.contents().toArray(),
+    );
+
+    if (updateTimeText) {
+      metadata.updateTime = updateTimeText;
+    }
+
+    const statEmElements = countParent.find('em').toArray();
+
+    if (statEmElements.length >= 2) {
+      const totalRecText = normalizeHtmlNodesText(
+        $(statEmElements[1]).contents().toArray(),
+      );
+
+      if (totalRecText) {
+        const parsed = this.numberValue(totalRecText);
+
+        if (parsed !== null) {
+          metadata.totalRecommendations = parsed;
+        }
+      }
+    }
+
+    if (statEmElements.length >= 3) {
+      const weeklyRecText = normalizeHtmlNodesText(
+        $(statEmElements[2]).contents().toArray(),
+      );
+
+      if (weeklyRecText) {
+        const parsed = this.numberValue(weeklyRecText);
+
+        if (parsed !== null) {
+          metadata.weeklyRecommendations = parsed;
+        }
+      }
+    }
+
+    return {
+      externalBookId: sourceBookId,
+      title,
+      author,
+      description: description || null,
+      coverUrl,
+      genres: [...new Set(genres)],
+      bookStatus,
+      wordCount,
+      metadata: this.jsonObjectValue(metadata),
+    };
+  }
+
+  private parseDomLegacy(
+    $: ReturnType<typeof load>,
+    sourceBookId: string,
+  ): QidianBookFields | null {
+    const root = $('.book-information, [data-book-id]').first();
+    const domBookId =
+      this.stringValue(root.attr('data-book-id')) ?? sourceBookId;
+    const titleElement = root.find('h1 em, h1 .book-title, h1').first();
     const title =
-      normalizeHtmlNodesText(titleElement.contents().toArray()) ?? "";
+      normalizeHtmlNodesText(titleElement.contents().toArray()) ?? '';
     const authorElement = root
-      .find(".writer, .author .name, [data-author]")
+      .find('.writer, .author .name, [data-author]')
       .first();
-    const authorAttribute = authorElement.attr("data-author");
+    const authorAttribute = authorElement.attr('data-author');
     const author = authorAttribute
       ? normalizePlainText(authorAttribute)
-      : (normalizeHtmlNodesText(authorElement.contents().toArray()) ?? "");
+      : (normalizeHtmlNodesText(authorElement.contents().toArray()) ?? '');
 
     if (!title || !author || domBookId !== sourceBookId) {
       return null;
     }
 
-    const descriptionElement = $(".book-intro, .book-description").first();
+    const descriptionElement = $('.book-intro, .book-description').first();
     const description = normalizeHtmlNodesText(
       descriptionElement.contents().toArray(),
     );
-    const coverElement = root.find(".book-img img, img.book-cover, img").first();
+    const coverElement = root
+      .find('.book-img img, img.book-cover, img')
+      .first();
     const genres = root
       .find("[data-role='genre'], .genre, .category")
       .toArray()
       .map((node) => normalizeHtmlNodesText($(node).contents().toArray()))
       .filter((genre): genre is string => Boolean(genre));
-    const statusElement = root
-      .find(".book-status, [data-book-status]")
-      .first();
+    const statusElement = root.find('.book-status, [data-book-status]').first();
     const status =
-      normalizeHtmlNodesText(statusElement.contents().toArray()) ?? "";
+      normalizeHtmlNodesText(statusElement.contents().toArray()) ?? '';
     const wordCountElement = root
-      .find("[data-word-count], .word-count")
+      .find('[data-word-count], .word-count')
       .first();
-    const wordCountAttribute = wordCountElement.attr("data-word-count")?.trim();
+    const wordCountAttribute = wordCountElement.attr('data-word-count')?.trim();
 
     return {
       externalBookId: domBookId,
@@ -279,7 +555,7 @@ export class QidianBookParser {
       author,
       description: description || null,
       coverUrl: this.urlValue(
-        coverElement.attr("data-src") ?? coverElement.attr("src"),
+        coverElement.attr('data-src') ?? coverElement.attr('src'),
       ),
       genres: [...new Set(genres)],
       bookStatus: status || null,
@@ -338,9 +614,9 @@ export class QidianBookParser {
 
   private numberValue(value: unknown): number | null {
     const parsed =
-      typeof value === "number"
+      typeof value === 'number'
         ? value
-        : typeof value === "string"
+        : typeof value === 'string'
           ? parseDisplayedNumber(value)
           : null;
 
@@ -362,14 +638,18 @@ export class QidianBookParser {
     try {
       const url = new URL(input, QIDIAN_BASE_URL);
 
-      return url.protocol === "https:" ? url.href : null;
+      return url.protocol === 'https:' ? url.href : null;
     } catch {
       return null;
     }
   }
 
   private stringValue(value: unknown): string | null {
-    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    if (
+      typeof value === 'number' &&
+      Number.isSafeInteger(value) &&
+      value >= 0
+    ) {
       return String(value);
     }
 
@@ -377,7 +657,7 @@ export class QidianBookParser {
   }
 
   private nullableString(value: unknown): string | null {
-    if (typeof value !== "string") {
+    if (typeof value !== 'string') {
       return null;
     }
 
@@ -391,17 +671,16 @@ export class QidianBookParser {
       return {};
     }
 
-    const entries = Object.entries(value).filter((entry): entry is [string, CrawlerJsonValue] =>
-      this.isJsonValue(entry[1]),
+    const entries = Object.entries(value).filter(
+      (entry): entry is [string, CrawlerJsonValue] =>
+        this.isJsonValue(entry[1]),
     );
 
     return Object.fromEntries(entries);
   }
 
   private isJsonValue(value: unknown): value is CrawlerJsonValue {
-    const stack: { value: unknown; depth: number }[] = [
-      { value, depth: 0 },
-    ];
+    const stack: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
     let visited = 0;
 
     while (stack.length > 0) {
@@ -415,13 +694,13 @@ export class QidianBookParser {
 
       if (
         frame.value === null ||
-        typeof frame.value === "string" ||
-        typeof frame.value === "boolean"
+        typeof frame.value === 'string' ||
+        typeof frame.value === 'boolean'
       ) {
         continue;
       }
 
-      if (typeof frame.value === "number") {
+      if (typeof frame.value === 'number') {
         if (!Number.isFinite(frame.value)) {
           return false;
         }
@@ -452,6 +731,6 @@ export class QidianBookParser {
   }
 
   private isObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }

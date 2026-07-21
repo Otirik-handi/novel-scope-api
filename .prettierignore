@@ -1,0 +1,6 @@
+﻿dist
+node_modules
+coverage
+prisma/migrations
+.git
+.nyc_output

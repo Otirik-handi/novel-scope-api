@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+﻿import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CrawledRankingItem, RankType } from "../../interfaces";
 import { QidianRankingParser } from "./qidian-ranking.parser";
@@ -79,12 +79,12 @@ describe("QidianRankingParser", () => {
         title: `${rankType} 小说 1`,
         author: `${rankType} 作者 1`,
         sourceUrl: `https://www.qidian.com/book/${firstBookId}/`,
-        metrics: { [metricName]: 12_345 },
+        metrics: {},
       });
       expect(result.items[9]).toMatchObject({
         title: `${rankType} 小说 10`,
         author: `${rankType} 作者 10`,
-        metrics: { [metricName]: 10 },
+        metrics: {},
       });
     },
   );
@@ -111,12 +111,12 @@ describe("QidianRankingParser", () => {
       const href =
         index === 0 ? `/book/${bookId}/chapter/99` : `/book/${bookId}/`;
 
-      return `<li><h2><a href="${href}">严格路径小说 ${index}</a></h2><p class="author"><a>作者 ${index}</a></p></li>`;
+      return `<li><h2><a href="${href}">严格路径小说 ${index}</a></h2><p class="author"><a class="name">作者 ${index}</a></p></li>`;
     }).join("");
 
     expect(() =>
       parser.parse({
-        html: `<ol class="book-img-text">${items}</ol>`,
+        html: `<div id="book-img-text"><ul>${items}</ul></div>`,
         rankType: "yuepiao",
         sourceUrl: "https://www.qidian.com/rank/yuepiao/",
         fetchedAt: FETCHED_AT,
@@ -132,11 +132,11 @@ describe("QidianRankingParser", () => {
           ? `/book/${bookId}`
           : `https://www.qidian.com/book/${bookId}/?from=rank`;
 
-      return `<li><h2><a href="${href}">严格路径小说 ${index}</a></h2><p class="author"><a>作者 ${index}</a></p></li>`;
+      return `<li><h2><a href="${href}">严格路径小说 ${index}</a></h2><p class="author"><a class="name">作者 ${index}</a></p></li>`;
     }).join("");
 
     const result = parser.parse({
-      html: `<ol class="book-img-text">${items}</ol>`,
+      html: `<div id="book-img-text"><ul>${items}</ul></div>`,
       rankType: "yuepiao",
       sourceUrl: "https://www.qidian.com/rank/yuepiao/",
       fetchedAt: FETCHED_AT,
@@ -151,11 +151,11 @@ describe("QidianRankingParser", () => {
     const items = Array.from({ length: 10 }, (_, index) => {
       const title = index === 0 ? deepTitle : `普通标题 ${index}`;
 
-      return `<li><h2><a href="/book/270000000${index}/">${title}</a></h2><p class="author"><a>作者 ${index}</a></p></li>`;
+      return `<li><h2><a href="/book/270000000${index}/">${title}</a></h2><p class="author"><a class="name">作者 ${index}</a></p></li>`;
     }).join("");
 
     const result = parser.parse({
-      html: `<ol class="book-img-text">${items}</ol>`,
+      html: `<div id="book-img-text"><ul>${items}</ul></div>`,
       rankType: "yuepiao",
       sourceUrl: "https://www.qidian.com/rank/yuepiao/",
       fetchedAt: FETCHED_AT,
@@ -170,12 +170,12 @@ describe("QidianRankingParser", () => {
     const items = Array.from({ length: 10 }, (_, index) => {
       const title = index === 0 ? deepTitle : `普通标题 ${index}`;
 
-      return `<li><h2><a href="/book/280000000${index}/">${title}</a></h2><p class="author"><a>作者 ${index}</a></p></li>`;
+      return `<li><h2><a href="/book/280000000${index}/">${title}</a></h2><p class="author"><a class="name">作者 ${index}</a></p></li>`;
     }).join("");
 
     expect(() =>
       parser.parse({
-        html: `<ol class="book-img-text">${items}</ol>`,
+        html: `<div id="book-img-text"><ul>${items}</ul></div>`,
         rankType: "yuepiao",
         sourceUrl: "https://www.qidian.com/rank/yuepiao/",
         fetchedAt: FETCHED_AT,

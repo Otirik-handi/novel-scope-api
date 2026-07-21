@@ -1,24 +1,21 @@
-import type { BookCrawler, CrawledBook } from "../../interfaces";
-import type { QidianClient } from "../qidian.client";
-import {
-  QIDIAN_BASE_URL,
-  QIDIAN_BOOK_PATH_PREFIX,
-} from "../qidian.constants";
-import { QidianBookParser } from "./qidian-book.parser";
+import type { BookCrawler, CrawledBook } from '../../interfaces';
+import type { QidianClient } from '../qidian.client';
+import { QIDIAN_BASE_URL, QIDIAN_BOOK_PATH_PREFIX } from '../qidian.constants';
+import { QidianBookParser } from './qidian-book.parser';
 
 export class QidianBookCrawlerError extends Error {
-  override readonly name = "QidianBookCrawlerError";
+  override readonly name = 'QidianBookCrawlerError';
 }
 
 export class QidianBookCrawler implements BookCrawler {
   constructor(
-    private readonly client: Pick<QidianClient, "fetchPage">,
+    private readonly client: Pick<QidianClient, 'fetchPage'>,
     private readonly parser = new QidianBookParser(),
   ) {}
 
   async crawl(externalBookId: string): Promise<CrawledBook> {
     if (!/^\d+$/.test(externalBookId)) {
-      throw new QidianBookCrawlerError("Invalid Qidian book ID");
+      throw new QidianBookCrawlerError('Invalid Qidian book ID');
     }
 
     const page = await this.client.fetchPage(
@@ -27,7 +24,7 @@ export class QidianBookCrawler implements BookCrawler {
 
     if (!this.matchesRequestedBook(page.sourceUrl, externalBookId)) {
       throw new QidianBookCrawlerError(
-        "Qidian book final URL does not match requested book ID",
+        'Qidian book final URL does not match requested book ID',
       );
     }
 
@@ -48,8 +45,8 @@ export class QidianBookCrawler implements BookCrawler {
 
       return (
         url.origin === QIDIAN_BASE_URL &&
-        url.username === "" &&
-        url.password === "" &&
+        url.username === '' &&
+        url.password === '' &&
         match?.[1] === externalBookId
       );
     } catch {

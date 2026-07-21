@@ -1,16 +1,28 @@
-import axios, { type AxiosAdapter, type AxiosInstance } from "axios";
+﻿import axios, { type AxiosAdapter, type AxiosInstance } from "axios";
+import { Logger } from "@nestjs/common";
 import { load } from "cheerio";
 import { decodeBuffer } from "../../utils/charset.util";
 import {
   QIDIAN_ACCEPT,
   QIDIAN_ACCEPT_LANGUAGE,
   QIDIAN_BASE_URL,
+  QIDIAN_CACHE_CONTROL,
   QIDIAN_MAX_CONTENT_LENGTH_BYTES,
   QIDIAN_MAX_REDIRECTS,
+  QIDIAN_REFERER,
+  QIDIAN_SEC_CH_UA,
+  QIDIAN_SEC_CH_UA_MOBILE,
+  QIDIAN_SEC_CH_UA_PLATFORM,
+  QIDIAN_SEC_FETCH_DEST,
+  QIDIAN_SEC_FETCH_MODE,
+  QIDIAN_SEC_FETCH_SITE,
+  QIDIAN_SEC_FETCH_USER,
+  QIDIAN_UPGRADE_INSECURE_REQUESTS,
 } from "./qidian.constants";
 
 export interface QidianClientOptions {
   adapter?: AxiosAdapter;
+  logger?: Logger;
   requestTimeoutMs: number;
   userAgent: string;
 }
@@ -49,6 +61,28 @@ export class QidianClient {
 
   constructor(private readonly options: QidianClientOptions) {
     this.http = axios.create({ adapter: options.adapter });
+
+    if (options.logger) {
+      this.http.interceptors.request.use((config) => {
+        const method = (config.method ?? "GET").toUpperCase();
+        const url = config.url ?? "(unknown)";
+        const headers = config.headers
+          ? JSON.stringify(
+              config.headers.toJSON
+                ? config.headers.toJSON()
+                : config.headers,
+              null,
+              2,
+            )
+          : "(none)";
+
+        options.logger!.log(
+          `${method} ${url}\n${headers}`,
+        );
+
+        return config;
+      });
+    }
   }
 
   async fetchPage(pathOrUrl: string): Promise<QidianPage> {
@@ -70,7 +104,17 @@ export class QidianClient {
         headers: {
           Accept: QIDIAN_ACCEPT,
           "Accept-Language": QIDIAN_ACCEPT_LANGUAGE,
+          "Cache-Control": QIDIAN_CACHE_CONTROL,
+          Referer: QIDIAN_REFERER,
+          "Sec-Fetch-Dest": QIDIAN_SEC_FETCH_DEST,
+          "Sec-Fetch-Mode": QIDIAN_SEC_FETCH_MODE,
+          "Sec-Fetch-Site": QIDIAN_SEC_FETCH_SITE,
+          "Sec-Fetch-User": QIDIAN_SEC_FETCH_USER,
+          "Upgrade-Insecure-Requests": QIDIAN_UPGRADE_INSECURE_REQUESTS,
           "User-Agent": this.options.userAgent,
+          "sec-ch-ua": QIDIAN_SEC_CH_UA,
+          "sec-ch-ua-mobile": QIDIAN_SEC_CH_UA_MOBILE,
+          "sec-ch-ua-platform": QIDIAN_SEC_CH_UA_PLATFORM,
         },
         maxContentLength: QIDIAN_MAX_CONTENT_LENGTH_BYTES,
         maxRedirects: QIDIAN_MAX_REDIRECTS,

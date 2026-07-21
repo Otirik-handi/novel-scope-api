@@ -1,4 +1,4 @@
-import { BadGatewayException, Controller, Get, Param } from "@nestjs/common";
+﻿import { BadGatewayException, Controller, Get, Param, Post } from "@nestjs/common";
 import { BookParamsDto } from "./dto/book-params.dto";
 import type { BookDetailResource } from "./interfaces/book.interface";
 import {
@@ -17,6 +17,23 @@ export class BooksController {
   ): Promise<BookDetailResource> {
     try {
       return await this.booksService.getDetail(params.platform, params.bookId);
+    } catch (error) {
+      if (error instanceof BookRefreshError) {
+        throw new BadGatewayException(BOOK_REFRESH_FAILED);
+      }
+
+      throw error;
+    }
+  }
+@Post(":platform/:bookId/refresh")
+  async refreshDetail(
+    @Param() params: BookParamsDto,
+  ): Promise<BookDetailResource> {
+    try {
+      return await this.booksService.refreshDetail(
+        params.platform,
+        params.bookId,
+      );
     } catch (error) {
       if (error instanceof BookRefreshError) {
         throw new BadGatewayException(BOOK_REFRESH_FAILED);

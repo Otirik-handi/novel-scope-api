@@ -1,4 +1,4 @@
-# NovelScope API V0.1
+﻿# NovelScope API V0.1
 
 ## 约定
 
@@ -38,13 +38,13 @@ GET /v1/rankings/:platform/:rankType
       "author": "作者名称",
       "coverUrl": "https://bookcover.yuewen.com/example.jpg",
       "sourceUrl": "https://www.qidian.com/book/1031940621/",
-      "metrics": {
-        "monthlyTickets": 12345
-      }
+      "metrics": {}
     }
   ]
 }
 ```
+
+> V0.1 榜单 `metrics` 返回空对象。起点使用自定义字体（`hqwWDMYz`）将月票数等数值编码为不可读字符，HTML 文本解析无法还原。
 
 没有已保存快照时返回 `404`：
 
@@ -62,7 +62,7 @@ GET /v1/rankings/:platform/:rankType
 POST /v1/rankings/:platform/:rankType/refresh
 ```
 
-同步采集指定榜单。只有得到 10 个唯一、完整的条目时才以一个事务新增快照。成功返回 `201`，响应结构与“查询最新榜单”相同。
+同步采集指定榜单。只有得到 10 个唯一、完整的条目时才以一个事务新增快照。成功返回 `201`，响应结构与"查询最新榜单"相同。
 
 采集、解析、完整性校验或持久化失败时返回安全的 `502`，不会返回上游异常详情：
 
@@ -158,7 +158,10 @@ GET /v1/books/:platform/:bookId
   "bookStatus": "连载",
   "wordCount": 1234567,
   "metadata": {
-    "score": 9.8
+    "datePublished": "2022-10-07T18:08:41+08:00",
+    "dateModified": "2026-07-20T20:03:54+08:00",
+    "totalRecommendations": 6335600,
+    "weeklyRecommendations": 11200
   },
   "sourceUrl": "https://www.qidian.com/book/1031940621/",
   "fetchedAt": "2026-07-20T06:00:00.000Z",
@@ -166,6 +169,11 @@ GET /v1/books/:platform/:bookId
   "stale": false
 }
 ```
+
+V0.1 从以下来源提取数据：
+- **JSON-LD** 结构化脚本（`application/ld+json`）：书名、作者、简介、封面、分类、发布日期
+- **OG meta 标签**：作品状态
+- **DOM 选择器**：字数（`p.count > em:first-of-type`）、总推荐、周推荐（`p.count` 内后续 `<em>` 元素）、更新时间（`span.update-time`）
 
 过期详情刷新失败时仍返回 `200` 和旧数据，`stale` 为 `true`。失败不会覆盖旧行，`fetchedAt`、`expiresAt` 和其他详情字段保持最近一次成功值。
 
@@ -178,6 +186,14 @@ GET /v1/books/:platform/:bookId
   "error": "Bad Gateway"
 }
 ```
+
+## 强制刷新书籍详情
+
+```http
+POST /v1/books/:platform/:bookId/refresh
+```
+
+跳过 TTL 缓存检查，直接触发 Playwright 采集并覆盖数据库记录。响应结构与"查询书籍详情"成功响应一致。采集或校验失败返回 `502`。
 
 ## 参数错误
 

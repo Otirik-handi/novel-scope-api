@@ -1,23 +1,23 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import { type ConfigType } from "@nestjs/config";
-import appConfig from "../config/app.config";
-import { CrawlersService } from "../crawlers/crawlers.service";
-import type { CrawledBook } from "../crawlers/interfaces";
-import type { Platform } from "../shared/types/platform.type";
+﻿import { Inject, Injectable, Logger } from '@nestjs/common';
+import { type ConfigType } from '@nestjs/config';
+import appConfig from '../config/app.config';
+import { CrawlersService } from '../crawlers/crawlers.service';
+import type { CrawledBook } from '../crawlers/interfaces';
+import type { Platform } from '../shared/types/platform.type';
 import type {
   BookDetailResource,
   BooksClock,
   StoredBookDetail,
-} from "./interfaces/book.interface";
-import { BooksRepository } from "./books.repository";
+} from './interfaces/book.interface';
+import { BooksRepository } from './books.repository';
 
 const MILLISECONDS_PER_HOUR = 60 * 60 * 1000;
 
-export const BOOKS_CLOCK = Symbol("BOOKS_CLOCK");
-export const BOOK_REFRESH_FAILED = "Failed to fetch book detail";
+export const BOOKS_CLOCK = Symbol('BOOKS_CLOCK');
+export const BOOK_REFRESH_FAILED = 'Failed to fetch book detail';
 
 export class BookRefreshError extends Error {
-  override readonly name = "BookRefreshError";
+  override readonly name = 'BookRefreshError';
 
   constructor(cause: unknown) {
     super(BOOK_REFRESH_FAILED, { cause });
@@ -39,7 +39,7 @@ export class BooksService {
     this.ttlMilliseconds = config.bookDetailTtlHours * MILLISECONDS_PER_HOUR;
 
     if (!Number.isSafeInteger(this.ttlMilliseconds)) {
-      throw new Error("BOOK_DETAIL_TTL_HOURS is too large");
+      throw new Error('BOOK_DETAIL_TTL_HOURS is too large');
     }
   }
 
@@ -70,10 +70,24 @@ export class BooksService {
       }
 
       this.logger.error(
-        `Failed to fetch book ${platform}/${externalBookId}`,
+        `Failed to fetch book ${platform}/${externalBookId}: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
       );
       throw new BookRefreshError(error);
     }
+  }
+
+  async refreshDetail(
+    platform: Platform,
+    externalBookId: string,
+  ): Promise<BookDetailResource> {
+    const crawler = this.crawlersService.getBookCrawler(platform);
+    const crawled = await crawler.crawl(externalBookId);
+    this.assertValidCrawledBook(crawled, platform, externalBookId);
+    const expiresAt = this.calculateExpiresAt(crawled.fetchedAt);
+    const saved = await this.repository.upsertDetail(crawled, expiresAt);
+
+    return { ...saved, stale: false };
   }
 
   private isFresh(detail: StoredBookDetail): boolean {
@@ -81,15 +95,14 @@ export class BooksService {
   }
 
   private calculateExpiresAt(fetchedAt: Date): Date {
-    const expiresAtMilliseconds =
-      fetchedAt.getTime() + this.ttlMilliseconds;
+    const expiresAtMilliseconds = fetchedAt.getTime() + this.ttlMilliseconds;
     const expiresAt = new Date(expiresAtMilliseconds);
 
     if (
       !Number.isFinite(fetchedAt.getTime()) ||
       Number.isNaN(expiresAt.getTime())
     ) {
-      throw new Error("Cannot calculate book detail expiration");
+      throw new Error('Cannot calculate book detail expiration');
     }
 
     return expiresAt;
@@ -104,25 +117,25 @@ export class BooksService {
       crawledBook.platform !== platform ||
       crawledBook.externalBookId !== externalBookId
     ) {
-      throw new Error("Crawler returned a different book");
+      throw new Error('Crawler returned a different book');
     }
 
     if (
-      typeof crawledBook.title !== "string" ||
-      crawledBook.title.trim() === "" ||
-      typeof crawledBook.author !== "string" ||
-      crawledBook.author.trim() === "" ||
-      typeof crawledBook.sourceUrl !== "string" ||
-      crawledBook.sourceUrl.trim() === ""
+      typeof crawledBook.title !== 'string' ||
+      crawledBook.title.trim() === '' ||
+      typeof crawledBook.author !== 'string' ||
+      crawledBook.author.trim() === '' ||
+      typeof crawledBook.sourceUrl !== 'string' ||
+      crawledBook.sourceUrl.trim() === ''
     ) {
-      throw new Error("Crawler returned an incomplete book detail");
+      throw new Error('Crawler returned an incomplete book detail');
     }
 
     if (
       !(crawledBook.fetchedAt instanceof Date) ||
       !Number.isFinite(crawledBook.fetchedAt.getTime())
     ) {
-      throw new Error("Crawler returned an invalid fetch time");
+      throw new Error('Crawler returned an invalid fetch time');
     }
 
     let sourceUrl: URL;
@@ -130,15 +143,15 @@ export class BooksService {
     try {
       sourceUrl = new URL(crawledBook.sourceUrl);
     } catch {
-      throw new Error("Crawler returned an invalid source URL");
+      throw new Error('Crawler returned an invalid source URL');
     }
 
     if (
-      (sourceUrl.protocol !== "http:" && sourceUrl.protocol !== "https:") ||
-      sourceUrl.username !== "" ||
-      sourceUrl.password !== ""
+      (sourceUrl.protocol !== 'http:' && sourceUrl.protocol !== 'https:') ||
+      sourceUrl.username !== '' ||
+      sourceUrl.password !== ''
     ) {
-      throw new Error("Crawler returned an invalid source URL");
+      throw new Error('Crawler returned an invalid source URL');
     }
   }
 }

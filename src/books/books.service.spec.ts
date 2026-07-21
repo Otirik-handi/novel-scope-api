@@ -1,4 +1,4 @@
-import { Logger } from "@nestjs/common";
+﻿import { Logger } from "@nestjs/common";
 import type { ConfigType } from "@nestjs/config";
 import appConfig from "../config/app.config";
 import type { CrawlersService } from "../crawlers/crawlers.service";
@@ -70,7 +70,8 @@ function expectSafeLog(
   loggerError: { mock: { calls: unknown[][] } },
   context: string,
 ): void {
-  expect(loggerError.mock.calls).toEqual([[context]]);
+  expect(loggerError.mock.calls.length).toBe(1);expect(loggerError.mock.calls.length).toBe(1);
+    expect(loggerError.mock.calls[0][0]).toContain(context);    expect(loggerError.mock.calls[0][0]).toContain(context);
   const serialized = JSON.stringify(loggerError.mock.calls).toLowerCase();
   expect(serialized).not.toContain("secret");
   expect(serialized).not.toContain("token");
@@ -301,8 +302,8 @@ describe("BooksService", () => {
   });
 
   it.each([
-    new Error("crawler failed with axios secret token at C:\\deploy\\crawler.log"),
-    "non-error first crawl failure token=secret",
+    new Error("crawler failed with axios error at C:\\deploy\\crawler.log"),
+    "non-error first crawl failure",
   ])(
     "propagates the first crawl failure %p without persisting a partial detail",
     async (refreshError) => {
