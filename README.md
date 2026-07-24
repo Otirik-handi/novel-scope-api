@@ -1,10 +1,10 @@
 ﻿# NovelScope API
 
-NovelScope API 是基于 NestJS、Prisma 和 PostgreSQL 的小说榜单与详情采集服务。V0.1 支持起点中文网（`qidian`）的月票、畅销、推荐、收藏四类 Top 10 榜单，并按需缓存书籍详情。
+NovelScope API 是基于 NestJS、Prisma 和 PostgreSQL 的小说榜单与详情采集服务。V0.2.0 支持起点中文网（`qidian`）四类 Top 10 榜单、番茄小说（`fanqie`）74 个静态 Top 10 榜单，并按需缓存两个平台的书籍详情。
 
-采集引擎基于 Playwright 模拟真实浏览器行为（系统 Edge），绕过起点 CDN 层的 TLS 指纹和 JavaScript Challenge 检测。
+采集引擎基于 Playwright 驱动系统 Edge。番茄采集先在可信站点初始化隔离的浏览器上下文，再使用同源会话读取榜单初始状态或请求详情；Cheerio 只定位详情页内嵌 JSON，脚本文本仅通过 `JSON.parse` 解析，不会执行。
 
-榜单刷新会保存不可变的历史快照，但 V0.1 只提供最新快照查询，不提供历史查询接口。书籍详情只保留最近一次成功采集的数据。
+榜单刷新会保存不可变的历史快照，但 V0.2.0 只提供最新快照查询，不提供历史查询接口。书籍详情只保留每个平台、每个外部书号最近一次成功采集的数据。
 
 ## 前置条件
 
@@ -36,6 +36,7 @@ DATABASE_URL=postgresql://account:password@localhost:5432/novel_scope
 TEST_DATABASE_URL=postgresql://account:password@localhost:5432/novel_scope_test
 QIDIAN_USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0
 QIDIAN_REQUEST_TIMEOUT_MS=30000
+FANQIE_REQUEST_TIMEOUT_MS=30000
 ```
 
 `QIDIAN_USER_AGENT` 会通过 Axios 请求头发出，应填入真实的浏览器 UA。
@@ -46,8 +47,10 @@ QIDIAN_REQUEST_TIMEOUT_MS=30000
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP 监听端口 |
 | `QIDIAN_REQUEST_TIMEOUT_MS` | `30000` | Playwright 页面加载超时（毫秒），建议不低于 30000 |
+| `FANQIE_REQUEST_TIMEOUT_MS` | `30000` | 番茄页面加载与同源请求超时（毫秒） |
 | `BOOK_DETAIL_TTL_HOURS` | `3` | 书籍详情缓存有效期（小时） |
-| `RANKING_REFRESH_CRON` | `0 0 6 * * *` | 榜单定时刷新 Cron |
+| `RANKING_REFRESH_CRON` | `0 0 6 * * *` | 起点四榜定时刷新 Cron，默认每天 06:00 |
+| `FANQIE_RANKING_REFRESH_CRON` | `0 30 0 * * *` | 番茄 74 榜定时刷新 Cron，默认每天 00:30 |
 | `RANKING_REFRESH_TIME_ZONE` | `Asia/Shanghai` | 定时刷新时区 |
 
 ## 数据库迁移
@@ -87,42 +90,44 @@ npm run build
 npm start
 ```
 
-应用启动不会立即采集。每日定时任务按配置刷新起点四类榜单；也可以调用刷新 API 同步触发。测试环境不注册该 Cron 任务。
+应用启动不会立即采集。两个独立定时任务按共享时区执行：`RANKING_REFRESH_CRON` 只控制起点四榜，`FANQIE_RANKING_REFRESH_CRON` 控制番茄 74 榜。也可以调用刷新 API 同步触发；测试环境不注册 Cron 任务。
 
 ## API 与刷新行为
 
-接口说明和响应示例见 [docs/API.md](docs/API.md)。V0.1 提供：
+接口说明和响应示例见 [docs/API.md](docs/API.md)。V0.2.0 提供：
 
 ```text
-GET  /v1/rankings/:platform/:rankType
-POST /v1/rankings/:platform/:rankType/refresh
+GET  /v1/rankings/:platform/:rankTypeKey
+POST /v1/rankings/:platform/:rankTypeKey/refresh
 POST /v1/rankings/:platform/refresh
 GET  /v1/books/:platform/:bookId
 POST /v1/books/:platform/:bookId/refresh
 ```
 
-- 最新榜单查询只读取数据库，不会隐式访问起点；没有快照时返回 `404`。
+- 最新榜单查询只读取数据库，不会隐式访问外站；没有快照时返回 `404`。
 - 单榜刷新同步采集并以一个事务保存完整的 10 条快照；失败返回 `502`，不会留下残缺快照。
-- 全量刷新按月票、畅销、推荐、收藏顺序串行执行；单榜失败不会阻止后续榜单，响应逐榜给出结果。
+- 全量刷新按平台静态目录顺序串行执行；单榜失败不会阻止后续榜单，响应逐榜给出机器键、中文名和结果。
 - 书籍详情不存在或过期时同步采集。过期刷新失败时返回最近一次成功数据并标记 `stale: true`；首次采集失败返回 `502`。
 - `POST /v1/books/:platform/:bookId/refresh` 强制刷新单本书籍，跳过 TTL 缓存检查。
-- V0.1 未实现刷新鉴权。部署时应在反向代理或网络边界限制 POST 刷新端点。
+- V0.2.0 未实现刷新鉴权。部署时应在反向代理或网络边界限制 POST 刷新端点。
 
 ## 采集原理
 
-V0.1 使用 Playwright 驱动系统 Edge 浏览器（`channel: msedge`）模拟真实用户访问，配合 `--disable-blink-features=AutomationControlled` 参数移除 `navigator.webdriver` 标记，绕过起点基于 TLS 指纹和浏览器特征的 CDN 反爬。
+V0.2.0 使用 Playwright 驱动系统 Edge 浏览器（`channel: msedge`）访问两个可信站点。每次采集使用独立 browser context，模块销毁时关闭复用的 browser。
 
 - **书籍详情**：从页面的 JSON-LD `<script>` 标签和 OG meta 标签提取结构化数据，DOM 选择器作为补充和回退。
 - **榜单**：通过 `#book-img-text > ul > li[data-rid]` 提取 10 个排行项，书号优先从 `data-bid` 属性读取，作者从 `p.author > a.name` 提取。
 - **已知限制**：月票/畅销等数值被自定义字体 `hqwWDMYz` 反爬保护，榜单 `metrics` 目前返回空对象。
+- **番茄榜单**：从限定的 `window.__INITIAL_STATE__` 候选分支解析前 10 项，目录由仓库内 37 个频道分类静态生成，不做线上分类发现。
+- **番茄详情**：先访问首页建立同源会话，再请求 `/page/{bookId}`，从受限大小和深度的内嵌 JSON 提取详情。
 
 ## 开发者配置
 
 运行真实数据库测试需要 TEST_DATABASE_URL 环境变量，指向与 DATABASE_URL 不同的独立数据库。测试前会自动校验两个数据库身份不同，防止误操作应用数据。
 
-`dotenv
+```dotenv
 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/novel_scope_test
-``r
+```
 
 ## 开发验证
 
@@ -151,6 +156,7 @@ npx tsc --noEmit --incremental false
 ## 采集安全
 
 - 起点 URL 请求前和重定向前均校验为受信的 `https://www.qidian.com` 域名；非起点目标拒绝连接。
+- 番茄只接受 `https://fanqienovel.com` 的精确榜单和详情路径；跨域、含凭据 URL 和异常重定向均拒绝。
 - 遇到验证码、登录墙或明确访问限制时立即失败，不尝试绕过。
 - Playwright 使用 `waitUntil: "load"` 等待页面就绪，避免 `networkidle` 因 WebSocket 长连接无限等待。
 - 客户端不做自动重试。错误详情记录在服务端日志中。
