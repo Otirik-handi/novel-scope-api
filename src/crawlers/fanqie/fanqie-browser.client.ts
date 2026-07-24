@@ -114,7 +114,7 @@ export class FanqieBrowserClient implements OnModuleDestroy {
 
           return {
             rankBookList: selectBranch(record.rankBookList),
-            rankData: selectBranch(record.rankData),
+            rankData: selectBranch(record.rankData ?? record.rank),
             pageData: selectBranch(record.pageData),
           };
         });
