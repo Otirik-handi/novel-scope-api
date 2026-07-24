@@ -94,7 +94,13 @@ npm start
 
 ## API 与刷新行为
 
-接口说明和响应示例见 [docs/API.md](docs/API.md)。V0.2.0 提供：
+应用启动后，可通过 Swagger UI 交互式查看和执行接口：
+
+```text
+http://localhost:3000/api-docs
+```
+
+端口随 `PORT` 配置变化。完整响应示例、错误语义和缓存行为见 [docs/API.md](docs/API.md)。V0.2.0 提供：
 
 ```text
 GET  /v1/rankings/:platform/:rankTypeKey
@@ -110,6 +116,8 @@ POST /v1/books/:platform/:bookId/refresh
 - 书籍详情不存在或过期时同步采集。过期刷新失败时返回最近一次成功数据并标记 `stale: true`；首次采集失败返回 `502`。
 - `POST /v1/books/:platform/:bookId/refresh` 强制刷新单本书籍，跳过 TTL 缓存检查。
 - V0.2.0 未实现刷新鉴权。部署时应在反向代理或网络边界限制 POST 刷新端点。
+
+通过 Swagger UI 执行 POST 刷新会访问外站并写入 `DATABASE_URL` 指向的数据库；书籍详情 GET 在缓存不存在或过期时也可能访问外站。手动验证前应确认数据库和外站访问配置符合预期。
 
 ## 采集原理
 

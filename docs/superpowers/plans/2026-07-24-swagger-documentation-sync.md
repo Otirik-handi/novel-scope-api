@@ -28,13 +28,13 @@
 
 > **记录点：Task 1（每完成一个 Step 立即更新）**
 >
-> - 状态：`未开始`
-> - 已完成步骤：`0/5`
-> - 恢复入口：`Step 1：将启动测试的期望版本改为 0.2.0`
-> - 验证证据：`尚无（任务未开始）`
+> - 状态：`已完成`
+> - 已完成步骤：`5/5`
+> - 恢复入口：`Task 2 / Step 1：更新 README 的 API 入口说明`
+> - 验证证据：`src/main.spec.ts 先将 Swagger info.version 期望改为 0.2.0；定向 Jest 退出码 1，明确显示期望 0.2.0、实际 1.0，红灯原因正确；src/main.ts 最小修改后定向 Jest 退出码 0，1/1 suite、1/1 test 通过`
 > - 提交：`尚无（任务未开始）`
 
-- [ ] **Step 1：先修改测试期望**
+- [x] **Step 1：先修改测试期望**
 
 将 `src/main.spec.ts` 的 Swagger `info` 断言改为：
 
@@ -47,7 +47,7 @@ info: {
 },
 ```
 
-- [ ] **Step 2：运行测试并确认预期失败**
+- [x] **Step 2：运行测试并确认预期失败**
 
 Run:
 
@@ -57,7 +57,7 @@ npx jest --runInBand --runTestsByPath "$((Resolve-Path src/main.spec.ts).Path)"
 
 Expected: FAIL，实际版本为 `1.0`，期望版本为 `0.2.0`。
 
-- [ ] **Step 3：最小修改生产元数据**
+- [x] **Step 3：最小修改生产元数据**
 
 将 `src/main.ts` 中：
 
@@ -71,7 +71,7 @@ Expected: FAIL，实际版本为 `1.0`，期望版本为 `0.2.0`。
 .setVersion("0.2.0")
 ```
 
-- [ ] **Step 4：重跑定向测试**
+- [x] **Step 4：重跑定向测试**
 
 Run:
 
@@ -81,7 +81,7 @@ npx jest --runInBand --runTestsByPath "$((Resolve-Path src/main.spec.ts).Path)"
 
 Expected: 1/1 suite、1/1 test PASS。
 
-- [ ] **Step 5：更新 Task 1 记录点**
+- [x] **Step 5：更新 Task 1 记录点**
 
 将状态改为 `已完成`、步骤改为 `5/5`，写入红绿测试证据，恢复入口指向 Task 2 / Step 1。
 
@@ -94,13 +94,13 @@ Expected: 1/1 suite、1/1 test PASS。
 
 > **记录点：Task 2（每完成一个 Step 立即更新）**
 >
-> - 状态：`未开始`
-> - 已完成步骤：`0/6`
-> - 恢复入口：`Task 1 / Step 1`
-> - 验证证据：`尚无（任务未开始）`
+> - 状态：`进行中`
+> - 已完成步骤：`5/6`
+> - 恢复入口：`Step 6：更新 Task 2 记录点`
+> - 验证证据：`README 已增加默认 /api-docs 入口、PORT 提示、API.md 契约分工及外站/数据库副作用提醒；API.md 已增加 Swagger 入口说明并移除 Swagger/OpenAPI 页面位于范围外的过时表述；rg 一致性扫描命中四个目标文件，API.md 存在，过时表述零命中，README 1 个本地链接目标有效；npm test 退出码 0，35/35 suites、377/377 tests；npm run lint、npm run build、npx tsc --noEmit --incremental false、git diff --check 均退出码 0`
 > - 提交：`尚无（任务未开始）`
 
-- [ ] **Step 1：更新 README 的 API 入口说明**
+- [x] **Step 1：更新 README 的 API 入口说明**
 
 在“API 与刷新行为”中明确：
 
@@ -116,7 +116,7 @@ http://localhost:3000/api-docs
 
 并在行为列表后补充：通过 Swagger 执行 POST 刷新会访问外站并写入 `DATABASE_URL` 指向的数据库；详情 GET 在缓存不存在或过期时也可能访问外站。
 
-- [ ] **Step 2：更新 API.md 的 Swagger 分工说明**
+- [x] **Step 2：更新 API.md 的 Swagger 分工说明**
 
 在“约定”中加入：
 
@@ -130,7 +130,7 @@ http://localhost:3000/api-docs
 V0.2.0 不提供榜单历史查询、番茄分类远程发现、跨平台书籍去重、刷新鉴权或自定义响应包装。部署时应在反向代理或网络边界限制 POST 刷新端点。
 ```
 
-- [ ] **Step 3：验证文档链接和描述一致**
+- [x] **Step 3：验证文档链接和描述一致**
 
 Run:
 
@@ -141,7 +141,7 @@ Test-Path docs/API.md
 
 Expected: 四个文件均能定位到对应入口或版本，`Test-Path` 输出 `True`；API.md 不再声称 Swagger 位于范围外。
 
-- [ ] **Step 4：运行全量验证**
+- [x] **Step 4：运行全量验证**
 
 Run:
 
@@ -155,7 +155,7 @@ git diff --check
 
 Expected: 35/35 suites、377/377 tests 通过，其余命令退出码均为 `0`。
 
-- [ ] **Step 5：审计并提交实现**
+- [x] **Step 5：审计并提交实现**
 
 Run:
 

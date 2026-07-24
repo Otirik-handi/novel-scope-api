@@ -58,7 +58,7 @@ describe("bootstrap", () => {
           info: {
             title: "NovelScope API",
             description: "小说数据查询与刷新 API",
-            version: "1.0",
+            version: "0.2.0",
             contact: {},
           },
         }),
