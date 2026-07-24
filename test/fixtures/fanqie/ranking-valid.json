@@ -1,0 +1,16 @@
+{
+  "rankData": {
+    "book_list": [
+      { "bookId": "1001", "bookName": "书名一", "authorName": "作者一", "coverUrl": "https://example.com/1.jpg", "read_count": "1.2万", "wordNumber": "12.3万", "creationStatus": "连载中", "lastChapterTitle": "第一章", "category": "古风世情" },
+      { "book_id": "1002", "title": "书名二", "author": "作者二", "thumb_url": "https://example.com/2.jpg", "readCount": 2000, "word_count": 220000, "creation_status": "已完结", "last_chapter_title": "终章", "categoryName": "都市" },
+      { "bookId": "1003", "bookName": "书名三", "authorName": "作者三" },
+      { "bookId": "1004", "bookName": "书名四", "authorName": "作者四" },
+      { "bookId": "1005", "bookName": "书名五", "authorName": "作者五" },
+      { "bookId": "1006", "bookName": "书名六", "authorName": "作者六" },
+      { "bookId": "1007", "bookName": "书名七", "authorName": "作者七" },
+      { "bookId": "1008", "bookName": "书名八", "authorName": "作者八" },
+      { "bookId": "1009", "bookName": "书名九", "authorName": "作者九" },
+      { "bookId": "1010", "bookName": "书名十", "authorName": "作者十" }
+    ]
+  }
+}

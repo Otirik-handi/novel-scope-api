@@ -1,0 +1,16 @@
+{
+  "rankData": {
+    "bookList": [
+      { "bookId": "5001", "authorName": "作者一" },
+      { "bookId": "5002", "bookName": "样本二", "authorName": "作者二" },
+      { "bookId": "5003", "bookName": "样本三", "authorName": "作者三" },
+      { "bookId": "5004", "bookName": "样本四", "authorName": "作者四" },
+      { "bookId": "5005", "bookName": "样本五", "authorName": "作者五" },
+      { "bookId": "5006", "bookName": "样本六", "authorName": "作者六" },
+      { "bookId": "5007", "bookName": "样本七", "authorName": "作者七" },
+      { "bookId": "5008", "bookName": "样本八", "authorName": "作者八" },
+      { "bookId": "5009", "bookName": "样本九", "authorName": "作者九" },
+      { "bookId": "5010", "bookName": "样本十", "authorName": "作者十" }
+    ]
+  }
+}

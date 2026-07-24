@@ -1,0 +1,14 @@
+{
+  "rankBookList": [
+    { "bookId": "2001", "bookName": "样本一", "authorName": "作者一" },
+    { "bookId": "2002", "bookName": "样本二", "authorName": "作者二" },
+    { "bookId": "2003", "bookName": "样本三", "authorName": "作者三" },
+    { "bookId": "2004", "bookName": "样本四", "authorName": "作者四" },
+    { "bookId": "2005", "bookName": "样本五", "authorName": "作者五" },
+    { "bookId": "2006", "bookName": "样本六", "authorName": "作者六" },
+    { "bookId": "2007", "bookName": "样本七", "authorName": "作者七" },
+    { "bookId": "2008", "bookName": "样本八", "authorName": "作者八" },
+    { "bookId": "2009", "bookName": "样本九", "authorName": "作者九" },
+    { "bookId": "2010", "bookName": "样本十", "authorName": "作者十" }
+  ]
+}
