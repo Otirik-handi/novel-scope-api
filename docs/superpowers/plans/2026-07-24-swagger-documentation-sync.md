@@ -180,11 +180,11 @@ Expected: 只有本计划文件和四个目标文件进入提交。
 
 > **记录点：Task 3（每完成一个 Step 立即更新）**
 >
-> - 状态：`进行中`
-> - 已完成步骤：`4/6`
-> - 恢复入口：`Step 5：推送 main`
-> - 验证证据：`git fetch origin 退出码 0；git rev-list --left-right --count origin/main...main 输出 0 40，远端无本地尚未包含的新提交；git merge --ff-only docs/swagger-documentation-sync 退出码 0，main 从 042a409 快进到 49c5a41；功能 worktree 干净且功能分支为 main 祖先，worktree 与本地功能分支均已删除；清理后 main 上 npm test 退出码 0，35/35 suites、377/377 tests；工作区干净、只剩主 worktree、提交拓扑完整、git diff --check origin/main..main 退出码 0`
-> - 提交：`尚无（任务未开始）`
+> - 状态：`已完成`
+> - 已完成步骤：`6/6`
+> - 恢复入口：`Swagger 文档同步、主分支集成与远端推送全部完成`
+> - 验证证据：`git fetch origin 退出码 0；git rev-list --left-right --count origin/main...main 输出 0 40，远端无本地尚未包含的新提交；git merge --ff-only docs/swagger-documentation-sync 退出码 0，main 从 042a409 快进到 49c5a41；功能 worktree 干净且功能分支为 main 祖先，worktree 与本地功能分支均已删除；清理后 main 上 npm test 退出码 0，35/35 suites、377/377 tests；工作区干净、只剩主 worktree、提交拓扑完整、git diff --check origin/main..main 退出码 0；首次 git push origin main 退出码 0，将远端从 49148a6 更新到 f697164；随后 origin/main...main 输出 0 0；stash@{0}: pre-merge-main-user-changes-20260724 仍存在且未应用、未删除`
+> - 提交：`893de38 docs: align swagger and api documentation；f697164 docs: record swagger main verification；最终记录由 docs: record swagger documentation rollout 承载`
 
 - [x] **Step 1：获取远端并检查分叉**
 
@@ -208,12 +208,12 @@ Run: `git status --short --branch`、`git log --oneline -5`、`git diff --check 
 
 Expected: 工作区干净，提交拓扑包含设计、计划和实现提交。
 
-- [ ] **Step 5：推送 main**
+- [x] **Step 5：推送 main**
 
 Run: `git push origin main`。
 
 Expected: 推送成功，远端 `origin/main` 更新到本地主分支最新提交。
 
-- [ ] **Step 6：保留备份、完成记录点并二次推送**
+- [x] **Step 6：保留备份、完成记录点并二次推送**
 
 确认 `stash@{0}: pre-merge-main-user-changes-20260724` 仍存在，不应用、不删除。将 Task 3 状态更新为 `已完成`、步骤改为 `6/6`，写入首次推送证据，提交为 `docs: record swagger documentation rollout`，再运行 `git push origin main` 推送最终记录提交。
