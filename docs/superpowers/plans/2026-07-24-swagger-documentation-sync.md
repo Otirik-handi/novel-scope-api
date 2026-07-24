@@ -94,11 +94,11 @@ Expected: 1/1 suite、1/1 test PASS。
 
 > **记录点：Task 2（每完成一个 Step 立即更新）**
 >
-> - 状态：`进行中`
-> - 已完成步骤：`5/6`
-> - 恢复入口：`Step 6：更新 Task 2 记录点`
+> - 状态：`已完成`
+> - 已完成步骤：`6/6`
+> - 恢复入口：`Task 3 / Step 1：获取远端并检查分叉`
 > - 验证证据：`README 已增加默认 /api-docs 入口、PORT 提示、API.md 契约分工及外站/数据库副作用提醒；API.md 已增加 Swagger 入口说明并移除 Swagger/OpenAPI 页面位于范围外的过时表述；rg 一致性扫描命中四个目标文件，API.md 存在，过时表述零命中，README 1 个本地链接目标有效；npm test 退出码 0，35/35 suites、377/377 tests；npm run lint、npm run build、npx tsc --noEmit --incremental false、git diff --check 均退出码 0`
-> - 提交：`尚无（任务未开始）`
+> - 提交：`893de38 docs: align swagger and api documentation`
 
 - [x] **Step 1：更新 README 的 API 入口说明**
 
@@ -168,7 +168,7 @@ git commit -m "docs: align swagger and api documentation"
 
 Expected: 只有本计划文件和四个目标文件进入提交。
 
-- [ ] **Step 6：更新 Task 2 记录点**
+- [x] **Step 6：更新 Task 2 记录点**
 
 将状态改为 `已完成`、步骤改为 `6/6`，写入全量验证和提交证据。记录点最终更新可使用独立文档提交承载。
 
@@ -182,7 +182,7 @@ Expected: 只有本计划文件和四个目标文件进入提交。
 >
 > - 状态：`未开始`
 > - 已完成步骤：`0/6`
-> - 恢复入口：`Task 2 / Step 1`
+> - 恢复入口：`Step 1：获取远端并检查分叉`
 > - 验证证据：`尚无（任务未开始）`
 > - 提交：`尚无（任务未开始）`
 
