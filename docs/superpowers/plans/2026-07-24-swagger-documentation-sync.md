@@ -181,9 +181,9 @@ Expected: 只有本计划文件和四个目标文件进入提交。
 > **记录点：Task 3（每完成一个 Step 立即更新）**
 >
 > - 状态：`进行中`
-> - 已完成步骤：`1/6`
-> - 恢复入口：`Step 2：将功能分支快进合并到 main`
-> - 验证证据：`git fetch origin 退出码 0；git rev-list --left-right --count origin/main...main 输出 0 40，远端无本地尚未包含的新提交`
+> - 已完成步骤：`2/6`
+> - 恢复入口：`Step 3：清理 worktree 和本地功能分支`
+> - 验证证据：`git fetch origin 退出码 0；git rev-list --left-right --count origin/main...main 输出 0 40，远端无本地尚未包含的新提交；git merge --ff-only docs/swagger-documentation-sync 退出码 0，main 从 042a409 快进到 49c5a41`
 > - 提交：`尚无（任务未开始）`
 
 - [x] **Step 1：获取远端并检查分叉**
@@ -192,7 +192,7 @@ Run: `git fetch origin`，再在主工作区运行 `git rev-list --left-right --
 
 Expected: 远端新增提交数为 `0`；若不为 `0`，先停止并审查远端变化。
 
-- [ ] **Step 2：将功能分支快进合并到 main**
+- [x] **Step 2：将功能分支快进合并到 main**
 
 Run: `git merge --ff-only docs/swagger-documentation-sync`。
 
