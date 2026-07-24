@@ -15,8 +15,10 @@ const configurationEnvironmentKeys = [
   "QIDIAN_USER_AGENT",
   "PORT",
   "QIDIAN_REQUEST_TIMEOUT_MS",
+  "FANQIE_REQUEST_TIMEOUT_MS",
   "BOOK_DETAIL_TTL_HOURS",
   "RANKING_REFRESH_CRON",
+  "FANQIE_RANKING_REFRESH_CRON",
   "RANKING_REFRESH_TIME_ZONE",
   "NODE_ENV",
 ] as const;
@@ -57,6 +59,7 @@ describe("validateEnvironment", () => {
         PORT: "3100",
         BOOK_DETAIL_TTL_HOURS: "6",
         RANKING_REFRESH_CRON: " 0 0 7 * * * ",
+        FANQIE_RANKING_REFRESH_CRON: " 0 45 0 * * * ",
         RANKING_REFRESH_TIME_ZONE: " Asia/Shanghai ",
       },
       () => {
@@ -64,7 +67,8 @@ describe("validateEnvironment", () => {
           port: 3100,
           bookDetailTtlHours: 6,
           rankingRefreshEnabled: true,
-          rankingRefreshCron: "0 0 7 * * *",
+          qidianRankingRefreshCron: "0 0 7 * * *",
+          fanqieRankingRefreshCron: "0 45 0 * * *",
           rankingRefreshTimeZone: "Asia/Shanghai",
         });
       },
@@ -102,11 +106,13 @@ describe("validateEnvironment", () => {
       {
         QIDIAN_USER_AGENT: "  NovelScope/0.1  ",
         QIDIAN_REQUEST_TIMEOUT_MS: "15000",
+        FANQIE_REQUEST_TIMEOUT_MS: "25000",
       },
       () => {
         expect(crawlerConfig()).toEqual({
           qidianUserAgent: "NovelScope/0.1",
-          requestTimeoutMs: 15_000,
+          qidianRequestTimeoutMs: 15_000,
+          fanqieRequestTimeoutMs: 25_000,
         });
       },
     );
@@ -129,8 +135,10 @@ describe("validateEnvironment", () => {
       ...requiredEnvironment,
       PORT: 3000,
       QIDIAN_REQUEST_TIMEOUT_MS: 10_000,
+      FANQIE_REQUEST_TIMEOUT_MS: 10_000,
       BOOK_DETAIL_TTL_HOURS: 3,
       RANKING_REFRESH_CRON: "0 0 6 * * *",
+      FANQIE_RANKING_REFRESH_CRON: "0 30 0 * * *",
       RANKING_REFRESH_TIME_ZONE: "Asia/Shanghai",
     });
   });
@@ -141,11 +149,13 @@ describe("validateEnvironment", () => {
         ...requiredEnvironment,
         PORT: "3100",
         QIDIAN_REQUEST_TIMEOUT_MS: "15000",
+        FANQIE_REQUEST_TIMEOUT_MS: "25000",
         BOOK_DETAIL_TTL_HOURS: "6",
       }),
     ).toMatchObject({
       PORT: 3100,
       QIDIAN_REQUEST_TIMEOUT_MS: 15_000,
+      FANQIE_REQUEST_TIMEOUT_MS: 25_000,
       BOOK_DETAIL_TTL_HOURS: 6,
     });
   });
@@ -157,6 +167,9 @@ describe("validateEnvironment", () => {
     ["PORT", "65536"],
     ["QIDIAN_REQUEST_TIMEOUT_MS", "0"],
     ["QIDIAN_REQUEST_TIMEOUT_MS", "10.5"],
+    ["FANQIE_REQUEST_TIMEOUT_MS", "0"],
+    ["FANQIE_REQUEST_TIMEOUT_MS", "-1"],
+    ["FANQIE_REQUEST_TIMEOUT_MS", "10.5"],
     ["BOOK_DETAIL_TTL_HOURS", "-1"],
     ["BOOK_DETAIL_TTL_HOURS", "1.5"],
   ])("rejects invalid numeric setting %s=%s", (key, value) => {
@@ -165,29 +178,35 @@ describe("validateEnvironment", () => {
     ).toThrow(`${key} must be a positive integer`);
   });
 
-  it("limits request timeout to the maximum Node timer delay", () => {
+  it.each([
+    "QIDIAN_REQUEST_TIMEOUT_MS",
+    "FANQIE_REQUEST_TIMEOUT_MS",
+  ] as const)("limits %s to the maximum Node timer delay", (key) => {
     expect(
       validateEnvironment({
         ...requiredEnvironment,
-        QIDIAN_REQUEST_TIMEOUT_MS: "2147483647",
-      }).QIDIAN_REQUEST_TIMEOUT_MS,
+        [key]: "2147483647",
+      })[key],
     ).toBe(2_147_483_647);
 
     expect(() =>
       validateEnvironment({
         ...requiredEnvironment,
-        QIDIAN_REQUEST_TIMEOUT_MS: "2147483648",
+        [key]: "2147483648",
       }),
-    ).toThrow("QIDIAN_REQUEST_TIMEOUT_MS must be a positive integer");
+    ).toThrow(`${key} must be a positive integer`);
   });
 
-  it("rejects an invalid ranking refresh cron expression", () => {
+  it.each([
+    "RANKING_REFRESH_CRON",
+    "FANQIE_RANKING_REFRESH_CRON",
+  ] as const)("rejects an invalid %s expression", (key) => {
     expect(() =>
       validateEnvironment({
         ...requiredEnvironment,
-        RANKING_REFRESH_CRON: "not-a-cron-expression",
+        [key]: "not-a-cron-expression",
       }),
-    ).toThrow("RANKING_REFRESH_CRON must be a valid cron expression");
+    ).toThrow(`${key} must be a valid cron expression`);
   });
 
   it("rejects an invalid ranking refresh time zone", () => {
@@ -223,8 +242,10 @@ describe("validateEnvironment", () => {
       "QIDIAN_USER_AGENT",
       "PORT",
       "QIDIAN_REQUEST_TIMEOUT_MS",
+      "FANQIE_REQUEST_TIMEOUT_MS",
       "BOOK_DETAIL_TTL_HOURS",
       "RANKING_REFRESH_CRON",
+      "FANQIE_RANKING_REFRESH_CRON",
       "RANKING_REFRESH_TIME_ZONE",
     ] as const;
     const originalEnvironment = Object.fromEntries(
@@ -236,8 +257,10 @@ describe("validateEnvironment", () => {
     process.env.QIDIAN_USER_AGENT = "  NovelScope/0.1  ";
     process.env.PORT = "3100";
     process.env.QIDIAN_REQUEST_TIMEOUT_MS = "15000";
+    process.env.FANQIE_REQUEST_TIMEOUT_MS = "25000";
     delete process.env.BOOK_DETAIL_TTL_HOURS;
     delete process.env.RANKING_REFRESH_CRON;
+    delete process.env.FANQIE_RANKING_REFRESH_CRON;
     delete process.env.RANKING_REFRESH_TIME_ZONE;
 
     let moduleReference: TestingModule | undefined;
@@ -253,15 +276,33 @@ describe("validateEnvironment", () => {
         databaseUrl: configService.get("database.url"),
         qidianUserAgent: configService.get("crawler.qidianUserAgent"),
         port: configService.get("app.port"),
-        requestTimeoutMs: configService.get("crawler.requestTimeoutMs"),
+        qidianRequestTimeoutMs: configService.get(
+          "crawler.qidianRequestTimeoutMs",
+        ),
+        fanqieRequestTimeoutMs: configService.get(
+          "crawler.fanqieRequestTimeoutMs",
+        ),
         bookDetailTtlHours: configService.get("app.bookDetailTtlHours"),
+        qidianRankingRefreshCron: configService.get(
+          "app.qidianRankingRefreshCron",
+        ),
+        fanqieRankingRefreshCron: configService.get(
+          "app.fanqieRankingRefreshCron",
+        ),
+        rankingRefreshTimeZone: configService.get(
+          "app.rankingRefreshTimeZone",
+        ),
       }).toEqual({
         databaseUrl:
           "postgresql://postgres:postgres@localhost:5432/novel_scope",
         qidianUserAgent: "NovelScope/0.1",
         port: 3100,
-        requestTimeoutMs: 15_000,
+        qidianRequestTimeoutMs: 15_000,
+        fanqieRequestTimeoutMs: 25_000,
         bookDetailTtlHours: 3,
+        qidianRankingRefreshCron: "0 0 6 * * *",
+        fanqieRankingRefreshCron: "0 30 0 * * *",
+        rankingRefreshTimeZone: "Asia/Shanghai",
       });
     } finally {
       await moduleReference?.close();

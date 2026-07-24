@@ -21,24 +21,24 @@ function childExitCode(result) {
 }
 
 async function runDatabaseIntegrationTests(dependencies) {
-  const { environment, verifyIsolation, runCli } = dependencies;
+  const { environment, verifyIsolation, verifyRankingMigration, runCli } = dependencies;
 
   await verifyIsolation({
     applicationDatabaseUrl: environment.DATABASE_URL,
     testDatabaseUrl: environment.TEST_DATABASE_URL,
   });
 
-  const migrationResult = runCli(
-    "prisma/build/index.js",
-    ["migrate", "deploy"],
-    {
-      env: {
-        ...environment,
-        DATABASE_URL: environment.TEST_DATABASE_URL.trim(),
-      },
-      stdio: "inherit",
+  await verifyRankingMigration({
+    testDatabaseUrl: environment.TEST_DATABASE_URL,
+  });
+
+  const migrationResult = runCli("prisma/build/index.js", ["migrate", "deploy"], {
+    env: {
+      ...environment,
+      DATABASE_URL: environment.TEST_DATABASE_URL.trim(),
     },
-  );
+    stdio: "inherit",
+  });
   const migrationExitCode = childExitCode(migrationResult);
 
   if (migrationExitCode !== 0) {
@@ -46,11 +46,10 @@ async function runDatabaseIntegrationTests(dependencies) {
   }
 
   return childExitCode(
-    runCli(
-      "jest/bin/jest",
-      ["--config", "jest.database.config.js", "--runInBand"],
-      { env: environment, stdio: "inherit" },
-    ),
+    runCli("jest/bin/jest", ["--config", "jest.database.config.js", "--runInBand"], {
+      env: environment,
+      stdio: "inherit",
+    }),
   );
 }
 

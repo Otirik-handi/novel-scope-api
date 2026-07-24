@@ -1,14 +1,13 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsIn } from "class-validator";
-import { RANK_TYPES, type RankType } from "../../crawlers/interfaces";
+import { IsNotEmpty, IsString } from "class-validator";
 import { PlatformParamsDto } from "./platform-params.dto";
 
 export class RankingParamsDto extends PlatformParamsDto {
   @ApiProperty({
-    description: "榜单类型",
-    enum: RANK_TYPES,
-    example: "yuepiao",
+    description: "榜单机器键",
+    example: "0_1_1139",
   })
-  @IsIn(RANK_TYPES)
-  rankType!: RankType;
+  @IsString()
+  @IsNotEmpty()
+  rankTypeKey!: string;
 }

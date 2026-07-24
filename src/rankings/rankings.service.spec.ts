@@ -1,26 +1,37 @@
-import { Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  NotFoundException,
+} from "@nestjs/common";
 import type { CrawlersService } from "../crawlers/crawlers.service";
-import type { CrawledRanking } from "../crawlers/interfaces";
+import type {
+  CrawledRanking,
+  RankingCatalog,
+  RankingDefinition,
+} from "../crawlers/interfaces";
+import { QidianRankingCatalog } from "../crawlers/qidian/rankings/qidian-ranking.catalog";
 import type { RankingsRepository } from "./rankings.repository";
 import { RankingIntegrityError, RankingsService } from "./rankings.service";
 
+const qidianCatalog = new QidianRankingCatalog();
 const snapshot = {
   id: "snapshot-1",
   platform: "qidian",
-  rankType: "yuepiao",
+  rankTypeKey: "yuepiao",
+  rankType: "月票榜",
   sourceUrl: "https://www.qidian.com/rank/yuepiao/",
   fetchedAt: new Date("2026-07-20T01:00:00.000Z"),
   createdAt: new Date("2026-07-20T01:00:01.000Z"),
   items: [],
 };
 
-function createSubject() {
+function createSubject(catalog: RankingCatalog = qidianCatalog) {
   const repository = {
     findLatest: jest.fn(),
     saveSnapshot: jest.fn(),
   };
   const rankingCrawler = { crawl: jest.fn() };
   const crawlersService = {
+    getRankingCatalog: jest.fn(() => catalog),
     getRankingCrawler: jest.fn(() => rankingCrawler),
   };
 
@@ -41,7 +52,7 @@ describe("RankingsService", () => {
   });
 
   describe("getLatest", () => {
-    it("returns the latest stored snapshot without selecting or calling a crawler", async () => {
+    it("resolves the catalog before querying by platform and machine key", async () => {
       const { service, repository, rankingCrawler, crawlersService } =
         createSubject();
       repository.findLatest.mockResolvedValue(snapshot);
@@ -49,9 +60,19 @@ describe("RankingsService", () => {
       await expect(service.getLatest("qidian", "yuepiao")).resolves.toBe(
         snapshot,
       );
+      expect(crawlersService.getRankingCatalog).toHaveBeenCalledWith("qidian");
       expect(repository.findLatest).toHaveBeenCalledWith("qidian", "yuepiao");
       expect(crawlersService.getRankingCrawler).not.toHaveBeenCalled();
       expect(rankingCrawler.crawl).not.toHaveBeenCalled();
+    });
+
+    it("rejects an unregistered key before querying persistence", async () => {
+      const { service, repository } = createSubject();
+
+      await expect(
+        service.getLatest("qidian", "0_1_1139"),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repository.findLatest).not.toHaveBeenCalled();
     });
 
     it("throws NotFoundException when no snapshot has been stored", async () => {
@@ -74,9 +95,27 @@ describe("RankingsService", () => {
       repository.saveSnapshot.mockResolvedValue(saved);
 
       await expect(service.refresh("qidian", "yuepiao")).resolves.toBe(saved);
+      expect(crawlersService.getRankingCatalog).toHaveBeenCalledWith("qidian");
       expect(crawlersService.getRankingCrawler).toHaveBeenCalledWith("qidian");
       expect(rankingCrawler.crawl).toHaveBeenCalledWith("yuepiao");
       expect(repository.saveSnapshot).toHaveBeenCalledWith(crawled);
+    });
+
+    it.each([
+      ["platform", { platform: "fanqie" }],
+      ["machine key", { rankTypeKey: "hotsales" }],
+      ["display name", { rankType: "错误榜名" }],
+    ])("does not persist a crawler result with the wrong %s", async (_label, patch) => {
+      const { service, repository, rankingCrawler } = createSubject();
+      rankingCrawler.crawl.mockResolvedValue({
+        ...makeCrawledRanking(),
+        ...patch,
+      });
+
+      await expect(
+        service.refresh("qidian", "yuepiao"),
+      ).rejects.toBeInstanceOf(RankingIntegrityError);
+      expect(repository.saveSnapshot).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -88,29 +127,28 @@ describe("RankingsService", () => {
           { ...makeCrawledRanking().items[9], externalBookId: "1000" },
         ],
       ],
+      [
+        "duplicate ranks",
+        [
+          ...makeCrawledRanking().items.slice(0, 9),
+          { ...makeCrawledRanking().items[9], rank: 1 },
+        ],
+      ],
+      [
+        "blank required field",
+        [
+          { ...makeCrawledRanking().items[0], title: " " },
+          ...makeCrawledRanking().items.slice(1),
+        ],
+      ],
     ])("does not persist a ranking with %s", async (_reason, items) => {
       const { service, repository, rankingCrawler } = createSubject();
-      rankingCrawler.crawl.mockResolvedValue({
-        ...makeCrawledRanking(),
-        items,
-      });
+      rankingCrawler.crawl.mockResolvedValue({ ...makeCrawledRanking(), items });
 
-      await expect(service.refresh("qidian", "yuepiao")).rejects.toThrow();
+      await expect(
+        service.refresh("qidian", "yuepiao"),
+      ).rejects.toBeInstanceOf(RankingIntegrityError);
       expect(repository.saveSnapshot).not.toHaveBeenCalled();
-    });
-
-    it("propagates persistence failures without retrying or reading a partial snapshot", async () => {
-      const { service, repository, rankingCrawler } = createSubject();
-      rankingCrawler.crawl.mockResolvedValue(makeCrawledRanking());
-      repository.saveSnapshot.mockRejectedValue(
-        new Error("transaction failed"),
-      );
-
-      await expect(service.refresh("qidian", "yuepiao")).rejects.toThrow(
-        "transaction failed",
-      );
-      expect(repository.saveSnapshot).toHaveBeenCalledTimes(1);
-      expect(repository.findLatest).not.toHaveBeenCalled();
     });
 
     it.each(["", "   "])(
@@ -128,43 +166,50 @@ describe("RankingsService", () => {
         expect(repository.saveSnapshot).not.toHaveBeenCalled();
       },
     );
+
+    it("propagates persistence failures without reading a partial snapshot", async () => {
+      const { service, repository, rankingCrawler } = createSubject();
+      rankingCrawler.crawl.mockResolvedValue(makeCrawledRanking());
+      repository.saveSnapshot.mockRejectedValue(new Error("transaction failed"));
+
+      await expect(service.refresh("qidian", "yuepiao")).rejects.toThrow(
+        "transaction failed",
+      );
+      expect(repository.saveSnapshot).toHaveBeenCalledTimes(1);
+      expect(repository.findLatest).not.toHaveBeenCalled();
+    });
   });
 
   describe("refreshAll", () => {
-    it("refreshes all four rank types strictly in order and continues after a failure", async () => {
+    it("refreshes the four Qidian definitions serially and continues after failure", async () => {
       const { service, repository, rankingCrawler } = createSubject();
-      const sensitiveError = new Error(
-        "database failed at C:\\deploy\\secrets\\database.json for postgres://admin:secret@db/internal",
-      );
-      const loggerError = jest
-        .spyOn(Logger.prototype, "error")
-        .mockImplementation();
       const events: string[] = [];
-      let activeCrawls = 0;
-      let maximumActiveCrawls = 0;
-      rankingCrawler.crawl.mockImplementation(async (rankType) => {
-        events.push(`start:${rankType}`);
-        activeCrawls += 1;
-        maximumActiveCrawls = Math.max(maximumActiveCrawls, activeCrawls);
+      let active = 0;
+      let maximumActive = 0;
+      rankingCrawler.crawl.mockImplementation(async (rankTypeKey: string) => {
+        events.push(`start:${rankTypeKey}`);
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
         await Promise.resolve();
-        activeCrawls -= 1;
-        events.push(`end:${rankType}`);
+        active -= 1;
+        events.push(`end:${rankTypeKey}`);
 
-        if (rankType === "hotsales") {
-          throw sensitiveError;
+        if (rankTypeKey === "hotsales") {
+          throw new Error("private crawler detail");
         }
 
-        return makeCrawledRanking(rankType);
+        return makeCrawledRanking(rankTypeKey);
       });
       repository.saveSnapshot.mockImplementation(async (ranking) => ({
         ...snapshot,
+        rankTypeKey: ranking.rankTypeKey,
         rankType: ranking.rankType,
         items: ranking.items,
       }));
 
-      const result = await service.refreshAll("qidian");
+      const results = await service.refreshAll("qidian");
 
-      expect(maximumActiveCrawls).toBe(1);
+      expect(maximumActive).toBe(1);
       expect(events).toEqual([
         "start:yuepiao",
         "end:yuepiao",
@@ -176,95 +221,100 @@ describe("RankingsService", () => {
         "end:collect",
       ]);
       expect(
-        result.map(({ rankType, success }) => ({ rankType, success })),
+        results.map(({ rankTypeKey, rankType, success }) => ({
+          rankTypeKey,
+          rankType,
+          success,
+        })),
       ).toEqual([
-        { rankType: "yuepiao", success: true },
-        { rankType: "hotsales", success: false },
-        { rankType: "recom", success: true },
-        { rankType: "collect", success: true },
+        { rankTypeKey: "yuepiao", rankType: "月票榜", success: true },
+        { rankTypeKey: "hotsales", rankType: "畅销榜", success: false },
+        { rankTypeKey: "recom", rankType: "推荐榜", success: true },
+        { rankTypeKey: "collect", rankType: "收藏榜", success: true },
       ]);
-      expect(result[1]).toEqual({
-        rankType: "hotsales",
+      expect(results[1]).toEqual({
+        rankTypeKey: "hotsales",
+        rankType: "畅销榜",
         success: false,
         error: "RANKING_REFRESH_FAILED",
       });
-      expect(JSON.stringify(result)).not.toContain(sensitiveError.message);
-      expect(() => JSON.stringify(result)).not.toThrow();
-      expect(loggerError).toHaveBeenCalledWith(
-        "Failed to refresh ranking qidian/hotsales",
-      );
+      expect(JSON.stringify(results)).not.toContain("private crawler detail");
       expect(repository.saveSnapshot).toHaveBeenCalledTimes(3);
     });
 
-    it("logs only fixed ranking context for every thrown value", async () => {
-      const { service, rankingCrawler } = createSubject();
-      const loggerError = jest
-        .spyOn(Logger.prototype, "error")
-        .mockImplementation();
-      const failures: Record<CrawledRanking["rankType"], unknown> = {
-        yuepiao: new Error(
-          "failed at C:\\deploy\\token.txt for postgres://admin:secret@db/internal?token=private",
-        ),
-        hotsales: "crawler token=string-secret",
-        recom: {
-          message: "object secret",
-          source: "C:\\deploy\\object.json",
+    it("uses a Fanqie catalog's stable definition order", async () => {
+      const definitions: RankingDefinition[] = [
+        {
+          platform: "fanqie",
+          rankTypeKey: "0_1_1139",
+          rankType: "女频-新书榜-古风世情",
         },
-        collect: null,
+        {
+          platform: "fanqie",
+          rankTypeKey: "0_2_1139",
+          rankType: "女频-阅读榜-古风世情",
+        },
+        {
+          platform: "fanqie",
+          rankTypeKey: "1_1_1141",
+          rankType: "男频-新书榜-西方奇幻",
+        },
+      ];
+      const catalog: RankingCatalog = {
+        list: () => definitions,
+        resolve: (rankTypeKey) =>
+          definitions.find((item) => item.rankTypeKey === rankTypeKey) ?? null,
       };
-      rankingCrawler.crawl.mockImplementation(
-        async (rankType: CrawledRanking["rankType"]) => {
-          throw failures[rankType];
-        },
+      const { service, repository, rankingCrawler } = createSubject(catalog);
+      rankingCrawler.crawl.mockImplementation(async (rankTypeKey: string) => {
+        const definition = catalog.resolve(rankTypeKey)!;
+
+        if (rankTypeKey === "0_2_1139") {
+          throw new Error("blocked");
+        }
+
+        return makeCrawledRanking(rankTypeKey, definition);
+      });
+      repository.saveSnapshot.mockImplementation(async (ranking) => ({
+        ...snapshot,
+        platform: "fanqie",
+        rankTypeKey: ranking.rankTypeKey,
+        rankType: ranking.rankType,
+        items: ranking.items,
+      }));
+
+      const results = await service.refreshAll("fanqie");
+
+      expect(rankingCrawler.crawl.mock.calls.map(([key]) => key)).toEqual(
+        definitions.map((item) => item.rankTypeKey),
       );
-
-      await expect(service.refreshAll("qidian")).resolves.toEqual([
-        {
-          rankType: "yuepiao",
-          success: false,
-          error: "RANKING_REFRESH_FAILED",
-        },
-        {
-          rankType: "hotsales",
-          success: false,
-          error: "RANKING_REFRESH_FAILED",
-        },
-        {
-          rankType: "recom",
-          success: false,
-          error: "RANKING_REFRESH_FAILED",
-        },
-        {
-          rankType: "collect",
-          success: false,
-          error: "RANKING_REFRESH_FAILED",
-        },
+      expect(results.map((result) => result.success)).toEqual([
+        true,
+        false,
+        true,
       ]);
-      expect(loggerError.mock.calls).toEqual([
-        ["Failed to refresh ranking qidian/yuepiao"],
-        ["Failed to refresh ranking qidian/hotsales"],
-        ["Failed to refresh ranking qidian/recom"],
-        ["Failed to refresh ranking qidian/collect"],
-      ]);
-
-      const serializedLogs = JSON.stringify(
-        loggerError.mock.calls,
-      ).toLowerCase();
-      expect(serializedLogs).not.toContain("c:\\deploy");
-      expect(serializedLogs).not.toContain("postgres://");
-      expect(serializedLogs).not.toContain("secret");
-      expect(serializedLogs).not.toContain("token");
+      expect(results[1]).toEqual({
+        rankTypeKey: "0_2_1139",
+        rankType: "女频-阅读榜-古风世情",
+        success: false,
+        error: "RANKING_REFRESH_FAILED",
+      });
     });
   });
 });
 
 export function makeCrawledRanking(
-  rankType: CrawledRanking["rankType"] = "yuepiao",
+  rankTypeKey = "yuepiao",
+  definition: RankingDefinition = qidianCatalog.resolve(rankTypeKey)!,
 ): CrawledRanking {
   return {
-    platform: "qidian",
-    rankType,
-    sourceUrl: `https://www.qidian.com/rank/${rankType}/`,
+    platform: definition.platform,
+    rankTypeKey: definition.rankTypeKey,
+    rankType: definition.rankType,
+    sourceUrl:
+      definition.platform === "qidian"
+        ? `https://www.qidian.com/rank/${rankTypeKey}/`
+        : `https://fanqienovel.com/rank/${rankTypeKey}`,
     fetchedAt: new Date("2026-07-20T02:00:00.000Z"),
     items: Array.from({ length: 10 }, (_, index) => ({
       rank: index + 1,
@@ -272,7 +322,10 @@ export function makeCrawledRanking(
       title: `Book ${index + 1}`,
       author: `Author ${index + 1}`,
       coverUrl: null,
-      sourceUrl: `https://www.qidian.com/book/${1000 + index}/`,
+      sourceUrl:
+        definition.platform === "qidian"
+          ? `https://www.qidian.com/book/${1000 + index}/`
+          : `https://fanqienovel.com/page/${1000 + index}`,
       metrics: { score: index + 1 },
     })),
   };

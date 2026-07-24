@@ -13,7 +13,7 @@ export interface E2eApplication {
 export async function createE2eApplication(
   crawlersService: Pick<
     CrawlersService,
-    "getRankingCrawler" | "getBookCrawler"
+    "getRankingCatalog" | "getRankingCrawler" | "getBookCrawler"
   >,
 ): Promise<E2eApplication> {
   const applicationDatabaseUrl = process.env.DATABASE_URL?.trim();
@@ -27,9 +27,13 @@ export async function createE2eApplication(
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const originalNodeEnvironment = process.env.NODE_ENV;
   const originalQidianUserAgent = process.env.QIDIAN_USER_AGENT;
+  const originalFanqieRequestTimeoutMs = process.env.FANQIE_REQUEST_TIMEOUT_MS;
+  const originalFanqieRankingRefreshCron = process.env.FANQIE_RANKING_REFRESH_CRON;
   process.env.DATABASE_URL = testDatabaseUrl;
   process.env.NODE_ENV = "test";
   process.env.QIDIAN_USER_AGENT = "NovelScope E2E tests";
+  process.env.FANQIE_REQUEST_TIMEOUT_MS = "10000";
+  process.env.FANQIE_RANKING_REFRESH_CRON = "0 30 0 * * *";
 
   let moduleReference: TestingModule | undefined;
   let app: INestApplication | undefined;
@@ -67,6 +71,8 @@ export async function createE2eApplication(
                 originalDatabaseUrl,
                 originalNodeEnvironment,
                 originalQidianUserAgent,
+                originalFanqieRequestTimeoutMs,
+                originalFanqieRankingRefreshCron,
               );
             }
           })();
@@ -83,6 +89,8 @@ export async function createE2eApplication(
         originalDatabaseUrl,
         originalNodeEnvironment,
         originalQidianUserAgent,
+        originalFanqieRequestTimeoutMs,
+        originalFanqieRankingRefreshCron,
       );
     }
     throw error;
@@ -111,6 +119,8 @@ function restoreEnvironment(
   databaseUrl: string | undefined,
   nodeEnvironment: string | undefined,
   qidianUserAgent: string | undefined,
+  fanqieRequestTimeoutMs: string | undefined,
+  fanqieRankingRefreshCron: string | undefined,
 ): void {
   if (databaseUrl === undefined) delete process.env.DATABASE_URL;
   else process.env.DATABASE_URL = databaseUrl;
@@ -120,4 +130,16 @@ function restoreEnvironment(
 
   if (qidianUserAgent === undefined) delete process.env.QIDIAN_USER_AGENT;
   else process.env.QIDIAN_USER_AGENT = qidianUserAgent;
+
+  if (fanqieRequestTimeoutMs === undefined) {
+    delete process.env.FANQIE_REQUEST_TIMEOUT_MS;
+  } else {
+    process.env.FANQIE_REQUEST_TIMEOUT_MS = fanqieRequestTimeoutMs;
+  }
+
+  if (fanqieRankingRefreshCron === undefined) {
+    delete process.env.FANQIE_RANKING_REFRESH_CRON;
+  } else {
+    process.env.FANQIE_RANKING_REFRESH_CRON = fanqieRankingRefreshCron;
+  }
 }

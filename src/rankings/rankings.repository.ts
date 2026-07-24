@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
-import type { CrawledRanking, RankType } from "../crawlers/interfaces";
+import type { CrawledRanking } from "../crawlers/interfaces";
 import type { Platform } from "../shared/types/platform.type";
 import { PrismaService } from "../shared/database/prisma.service";
 import type { RankingSnapshot } from "./interfaces/ranking.interface";
@@ -15,10 +15,10 @@ export class RankingsRepository {
 
   findLatest(
     platform: Platform,
-    rankType: RankType,
+    rankTypeKey: string,
   ): Promise<RankingSnapshot | null> {
     return this.prisma.rankingSnapshot.findFirst({
-      where: { platform, rankType },
+      where: { platform, rankTypeKey },
       orderBy: [{ fetchedAt: "desc" }, { createdAt: "desc" }],
       include: snapshotWithOrderedItems,
     });
@@ -49,6 +49,7 @@ export class RankingsRepository {
       const snapshot = await transaction.rankingSnapshot.create({
         data: {
           platform: ranking.platform,
+          rankTypeKey: ranking.rankTypeKey,
           rankType: ranking.rankType,
           sourceUrl: ranking.sourceUrl,
           fetchedAt: ranking.fetchedAt,

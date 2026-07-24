@@ -1,4 +1,5 @@
 import { NestFactory } from "@nestjs/core";
+import { SwaggerModule } from "@nestjs/swagger";
 import appConfig from "./config/app.config";
 
 describe("bootstrap", () => {
@@ -37,6 +38,13 @@ describe("bootstrap", () => {
     jest
       .spyOn(NestFactory, "create")
       .mockResolvedValue(application as never);
+    const swaggerDocument = {};
+    const createSwaggerDocument = jest
+      .spyOn(SwaggerModule, "createDocument")
+      .mockReturnValue(swaggerDocument as never);
+    const setupSwagger = jest
+      .spyOn(SwaggerModule, "setup")
+      .mockImplementation(() => undefined);
 
     try {
       await import("./main");
@@ -44,6 +52,22 @@ describe("bootstrap", () => {
 
       expect(application.get).toHaveBeenCalledWith(appConfig.KEY);
       expect(application.enableShutdownHooks).toHaveBeenCalledTimes(1);
+      expect(createSwaggerDocument).toHaveBeenCalledWith(
+        application,
+        expect.objectContaining({
+          info: {
+            title: "NovelScope API",
+            description: "小说数据查询与刷新 API",
+            version: "1.0",
+            contact: {},
+          },
+        }),
+      );
+      expect(setupSwagger).toHaveBeenCalledWith(
+        "api-docs",
+        application,
+        swaggerDocument,
+      );
       expect(
         application.enableShutdownHooks.mock.invocationCallOrder[0],
       ).toBeLessThan(application.listen.mock.invocationCallOrder[0]);

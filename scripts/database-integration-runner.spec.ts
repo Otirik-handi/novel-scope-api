@@ -12,9 +12,7 @@ const environment = {
   TEST_DATABASE_URL: "test-database",
 };
 
-function createRunCli(
-  ...results: ChildProcessResult[]
-): jest.MockedFunction<RunCli> {
+function createRunCli(...results: ChildProcessResult[]): jest.MockedFunction<RunCli> {
   const runCli: jest.MockedFunction<RunCli> = jest.fn();
   for (const result of results) {
     runCli.mockReturnValueOnce(result);
@@ -22,17 +20,31 @@ function createRunCli(
   return runCli;
 }
 
+function createVerifyRankingMigration(): jest.Mock<
+  Promise<void>,
+  [
+    {
+      testDatabaseUrl?: string;
+    },
+  ]
+> {
+  return jest.fn().mockResolvedValue(undefined);
+}
+
 describe("runDatabaseIntegrationTests", () => {
   it("does not start migration when a required URL is missing", async () => {
     const runCli = createRunCli();
+    const verifyRankingMigration = createVerifyRankingMigration();
 
     await expect(
       runDatabaseIntegrationTests({
         environment: { TEST_DATABASE_URL: "test-database" },
         verifyIsolation: assertDatabaseIsolation,
+        verifyRankingMigration,
         runCli,
       }),
     ).rejects.toThrow("DATABASE_URL is required");
+    expect(verifyRankingMigration).not.toHaveBeenCalled();
     expect(runCli).not.toHaveBeenCalled();
   });
 
@@ -43,25 +55,42 @@ describe("runDatabaseIntegrationTests", () => {
       databaseOid: "10",
     };
     const runCli = createRunCli();
+    const verifyRankingMigration = createVerifyRankingMigration();
 
     await expect(
       runDatabaseIntegrationTests({
         environment,
-        verifyIsolation: (input) =>
-          assertDatabaseIsolation(input, async () => identity),
+        verifyIsolation: (input) => assertDatabaseIsolation(input, async () => identity),
+        verifyRankingMigration,
         runCli,
       }),
     ).rejects.toThrow("must identify different PostgreSQL databases");
+    expect(verifyRankingMigration).not.toHaveBeenCalled();
     expect(runCli).not.toHaveBeenCalled();
   });
 
   it("overrides DATABASE_URL only for the migration process", async () => {
     const runCli = createRunCli(success, success);
     const verifyIsolation = jest.fn().mockResolvedValue(undefined);
+    const verifyRankingMigration = createVerifyRankingMigration();
 
     await expect(
-      runDatabaseIntegrationTests({ environment, verifyIsolation, runCli }),
+      runDatabaseIntegrationTests({
+        environment,
+        verifyIsolation,
+        verifyRankingMigration,
+        runCli,
+      }),
     ).resolves.toBe(0);
+    expect(verifyRankingMigration).toHaveBeenCalledWith({
+      testDatabaseUrl: "test-database",
+    });
+    expect(verifyIsolation.mock.invocationCallOrder[0]).toBeLessThan(
+      verifyRankingMigration.mock.invocationCallOrder[0],
+    );
+    expect(verifyRankingMigration.mock.invocationCallOrder[0]).toBeLessThan(
+      runCli.mock.invocationCallOrder[0],
+    );
     expect(runCli).toHaveBeenNthCalledWith(
       1,
       "prisma/build/index.js",
@@ -81,6 +110,7 @@ describe("runDatabaseIntegrationTests", () => {
       runDatabaseIntegrationTests({
         environment,
         verifyIsolation: jest.fn().mockResolvedValue(undefined),
+        verifyRankingMigration: createVerifyRankingMigration(),
         runCli,
       }),
     ).resolves.toBe(2);
@@ -94,6 +124,7 @@ describe("runDatabaseIntegrationTests", () => {
       runDatabaseIntegrationTests({
         environment,
         verifyIsolation: jest.fn().mockResolvedValue(undefined),
+        verifyRankingMigration: createVerifyRankingMigration(),
         runCli,
       }),
     ).resolves.toBe(7);
@@ -111,6 +142,7 @@ describe("runDatabaseIntegrationTests", () => {
       runDatabaseIntegrationTests({
         environment,
         verifyIsolation: jest.fn().mockResolvedValue(undefined),
+        verifyRankingMigration: createVerifyRankingMigration(),
         runCli,
       }),
     ).rejects.toBe(spawnError);
@@ -123,6 +155,7 @@ describe("runDatabaseIntegrationTests", () => {
       runDatabaseIntegrationTests({
         environment,
         verifyIsolation: jest.fn().mockResolvedValue(undefined),
+        verifyRankingMigration: createVerifyRankingMigration(),
         runCli,
       }),
     ).resolves.toBe(128 + constants.signals.SIGTERM);

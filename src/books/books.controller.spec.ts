@@ -20,19 +20,22 @@ describe("book route DTO", () => {
     await expect(validate(dto)).resolves.not.toHaveLength(0);
   });
 
-  it("accepts qidian and a numeric book ID", async () => {
+  it.each(["qidian", "fanqie"] as const)(
+    "accepts %s and a numeric book ID",
+    async (platform) => {
     const dto = Object.assign(new BookParamsDto(), {
-      platform: "qidian",
+      platform,
       bookId: "1031940621",
     });
 
     await expect(validate(dto)).resolves.toHaveLength(0);
-  });
+    },
+  );
 });
 
 describe("BooksController", () => {
   function createSubject() {
-    const service = { getDetail: jest.fn() };
+    const service = { getDetail: jest.fn(), refreshDetail: jest.fn() };
     return {
       controller: new BooksController(service as unknown as BooksService),
       service,
@@ -89,5 +92,36 @@ describe("BooksController", () => {
     await expect(
       controller.getDetail({ platform: "qidian", bookId: "1031940621" }),
     ).rejects.toBe(databaseError);
+  });
+
+  it("returns a forced Fanqie refresh directly", async () => {
+    const { controller, service } = createSubject();
+    const resource = {
+      platform: "fanqie",
+      externalBookId: "7621419029625834521",
+      stale: false,
+    };
+    service.refreshDetail.mockResolvedValue(resource);
+
+    await expect(
+      controller.refreshDetail({
+        platform: "fanqie",
+        bookId: "7621419029625834521",
+      }),
+    ).resolves.toBe(resource);
+  });
+
+  it("maps a forced refresh domain error to a safe 502", async () => {
+    const { controller, service } = createSubject();
+    service.refreshDetail.mockRejectedValue(
+      new BookRefreshError(new Error("private crawler failure")),
+    );
+
+    await expect(
+      controller.refreshDetail({
+        platform: "fanqie",
+        bookId: "7621419029625834521",
+      }),
+    ).rejects.toBeInstanceOf(BadGatewayException);
   });
 });

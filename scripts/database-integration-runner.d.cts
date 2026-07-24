@@ -16,6 +16,7 @@ export interface DatabaseIntegrationRunnerDependencies {
     applicationDatabaseUrl?: string;
     testDatabaseUrl?: string;
   }) => Promise<void>;
+  verifyRankingMigration: (input: { testDatabaseUrl?: string }) => Promise<void>;
   runCli: RunCli;
 }
 

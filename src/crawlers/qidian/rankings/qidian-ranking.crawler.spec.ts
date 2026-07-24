@@ -32,11 +32,22 @@ describe("QidianRankingCrawler", () => {
     expect(fetchPage).toHaveBeenCalledWith("/rank/yuepiao/");
     expect(result).toMatchObject({
       platform: "qidian",
-      rankType: "yuepiao",
+      rankTypeKey: "yuepiao",
+      rankType: "月票榜",
       sourceUrl: page.sourceUrl,
       fetchedAt: FETCHED_AT,
     });
     expect(result.items).toHaveLength(10);
+  });
+
+  it("rejects a Fanqie ranking key before fetching a page", async () => {
+    const fetchPage = jest.fn<Promise<QidianPage>, [string]>();
+    const crawler = new QidianRankingCrawler({ fetchPage });
+
+    await expect(crawler.crawl("0_1_1139")).rejects.toThrow(
+      "Unknown Qidian ranking key",
+    );
+    expect(fetchPage).not.toHaveBeenCalled();
   });
 
   it("rejects a final URL for a different Qidian ranking", async () => {

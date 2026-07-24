@@ -4,9 +4,10 @@ import type { CrawledRanking } from "../crawlers/interfaces";
 
 function makeCrawledRanking(): CrawledRanking {
   return {
-    platform: "qidian",
-    rankType: "yuepiao",
-    sourceUrl: "https://www.qidian.com/rank/yuepiao/",
+    platform: "fanqie",
+    rankTypeKey: "0_1_1139",
+    rankType: "女频-新书榜-古风世情",
+    sourceUrl: "https://fanqienovel.com/rank/0_1_1139",
     fetchedAt: new Date("2026-07-20T02:00:00.000Z"),
     items: Array.from({ length: 10 }, (_, index) => ({
       rank: index + 1,
@@ -14,7 +15,7 @@ function makeCrawledRanking(): CrawledRanking {
       title: `Book ${index + 1}`,
       author: `Author ${index + 1}`,
       coverUrl: null,
-      sourceUrl: `https://www.qidian.com/book/${1000 + index}/`,
+      sourceUrl: `https://fanqienovel.com/page/${1000 + index}`,
       metrics: { score: index + 1 },
     })),
   };
@@ -28,11 +29,11 @@ describe("RankingsRepository", () => {
       prisma as unknown as PrismaService,
     );
 
-    await expect(repository.findLatest("qidian", "recom")).resolves.toEqual({
+    await expect(repository.findLatest("fanqie", "0_1_1139")).resolves.toEqual({
       id: "snapshot-1",
     });
     expect(findFirst).toHaveBeenCalledWith({
-      where: { platform: "qidian", rankType: "recom" },
+      where: { platform: "fanqie", rankTypeKey: "0_1_1139" },
       orderBy: [{ fetchedAt: "desc" }, { createdAt: "desc" }],
       include: { items: { orderBy: { rank: "asc" } } },
     });
@@ -72,6 +73,16 @@ describe("RankingsRepository", () => {
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(upsert).toHaveBeenCalledTimes(10);
     expect(snapshotCreate).toHaveBeenCalledTimes(1);
+    expect(snapshotCreate).toHaveBeenCalledWith({
+      data: {
+        platform: "fanqie",
+        rankTypeKey: "0_1_1139",
+        rankType: "女频-新书榜-古风世情",
+        sourceUrl: "https://fanqienovel.com/rank/0_1_1139",
+        fetchedAt: crawled.fetchedAt,
+      },
+      select: { id: true },
+    });
     expect(itemCreateMany).toHaveBeenCalledTimes(1);
     expect(itemCreateMany.mock.calls[0]?.[0].data).toHaveLength(10);
     expect(findUniqueOrThrow).toHaveBeenCalledWith({

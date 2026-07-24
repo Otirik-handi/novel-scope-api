@@ -3,7 +3,10 @@ export type {
   CrawlerJsonObject,
   CrawlerJsonValue,
 } from "./crawler-json.type";
-export { RANK_TYPES, type RankType } from "./rank-type";
+export type {
+  RankingCatalog,
+  RankingDefinition,
+} from "./ranking-catalog.interface";
 export type {
   CrawledRanking,
   CrawledRankingItem,

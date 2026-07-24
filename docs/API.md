@@ -1,70 +1,81 @@
-﻿# NovelScope API V0.1
+# NovelScope API V0.2.0
 
 ## 约定
 
-- 基础路径：`/v1`
-- V0.1 只支持平台 `qidian`。
-- 榜单类型：`yuepiao`（月票）、`hotsales`（畅销）、`recom`（推荐）、`collect`（收藏）。
-- `bookId` 必须是起点的纯数字书籍 ID。
-- 成功响应直接返回资源，不使用 `data` 包装层。
-- 日期时间使用 ISO 8601 字符串。
+- 基础路径：`/v1`。
+- 支持平台 `qidian`（起点中文网）和 `fanqie`（番茄小说）。
+- 榜单路径末段是平台目录中的机器键 `rankTypeKey`。起点仍使用 `yuepiao`、`hotsales`、`recom`、`collect`；番茄键形如 `0_1_1139`。
+- `bookId` 必须是对应平台的纯数字书籍 ID。
+- 成功响应直接返回资源，不使用 `data` 包装层；日期时间使用 ISO 8601 字符串。
+- 榜单快照和全量刷新结果同时返回机器键 `rankTypeKey` 与中文展示名 `rankType`。
 
 ## 查询最新榜单
 
 ```http
-GET /v1/rankings/:platform/:rankType
+GET /v1/rankings/:platform/:rankTypeKey
 ```
 
-该接口只查询最近一次成功保存的快照，不触发采集。条目按 `rank` 升序返回。
+该接口只读取最近一次成功保存的不可变快照，不触发采集。条目按 `rank` 升序返回。
+
+番茄示例：
+
+```http
+GET /v1/rankings/fanqie/0_1_1139
+```
 
 成功响应（`200`，示例只展示一个条目）：
 
 ```json
 {
   "id": "6a7dbdbc-6011-44e7-bc14-f11ac4977001",
-  "platform": "qidian",
-  "rankType": "yuepiao",
-  "sourceUrl": "https://www.qidian.com/rank/yuepiao/",
-  "fetchedAt": "2026-07-20T06:00:00.000Z",
-  "createdAt": "2026-07-20T06:00:01.000Z",
+  "platform": "fanqie",
+  "rankTypeKey": "0_1_1139",
+  "rankType": "女频-新书榜-古风世情",
+  "sourceUrl": "https://fanqienovel.com/rank/0_1_1139",
+  "fetchedAt": "2026-07-24T00:30:00.000Z",
+  "createdAt": "2026-07-24T00:30:01.000Z",
   "items": [
     {
       "id": "8b8d9957-c36b-4a0e-98f0-4e5696bef001",
       "snapshotId": "6a7dbdbc-6011-44e7-bc14-f11ac4977001",
       "bookId": "ae081572-9484-4dd0-ae9a-16ce31013001",
       "rank": 1,
-      "externalBookId": "1031940621",
+      "externalBookId": "7420000000000000000",
       "title": "作品标题",
       "author": "作者名称",
-      "coverUrl": "https://bookcover.yuewen.com/example.jpg",
-      "sourceUrl": "https://www.qidian.com/book/1031940621/",
-      "metrics": {}
+      "coverUrl": "https://example.com/cover.jpg",
+      "sourceUrl": "https://fanqienovel.com/page/7420000000000000000",
+      "metrics": {
+        "readCount": 123456,
+        "wordCount": 789000,
+        "creationStatus": "连载中",
+        "lastChapterTitle": "最新章节",
+        "category": "古风世情"
+      }
     }
   ]
 }
 ```
 
-> V0.1 榜单 `metrics` 返回空对象。起点使用自定义字体（`hqwWDMYz`）将月票数等数值编码为不可读字符，HTML 文本解析无法还原。
+番茄 `metrics` 可能包含 `readCount`、`wordCount`、`creationStatus`、`lastChapterTitle`、`category`，上游未提供的可选字段会省略。起点榜单目前返回空 `metrics`，因为自定义字体编码使榜单数值无法可靠还原。
 
-没有已保存快照时返回 `404`：
-
-```json
-{
-  "statusCode": 404,
-  "message": "Ranking snapshot not found",
-  "error": "Not Found"
-}
-```
+合法榜单键没有已保存快照时返回 `404`，未登记的榜单键返回 `400`。
 
 ## 刷新单个榜单
 
 ```http
-POST /v1/rankings/:platform/:rankType/refresh
+POST /v1/rankings/:platform/:rankTypeKey/refresh
 ```
 
-同步采集指定榜单。只有得到 10 个唯一、完整的条目时才以一个事务新增快照。成功返回 `201`，响应结构与"查询最新榜单"相同。
+例如：
 
-采集、解析、完整性校验或持久化失败时返回安全的 `502`，不会返回上游异常详情：
+```http
+POST /v1/rankings/fanqie/0_1_1139/refresh
+```
+
+接口同步采集指定榜单。只有得到 10 个排名为 1-10、书号唯一且必填字段完整的条目时，才以一个事务新增快照。成功返回 `201`，结构与最新榜单相同。
+
+采集、解析、完整性校验或持久化失败时返回安全的 `502`，不会向客户端暴露上游响应或内部错误：
 
 ```json
 {
@@ -74,66 +85,41 @@ POST /v1/rankings/:platform/:rankType/refresh
 }
 ```
 
-## 刷新全部榜单
+## 刷新平台全部榜单
 
 ```http
 POST /v1/rankings/:platform/refresh
 ```
 
-按 `yuepiao`、`hotsales`、`recom`、`collect` 顺序串行刷新。单个榜单失败不会中止后续榜单；请求本身成功完成时返回 `201` 和严格的四项结果。
-
-部分失败示例（成功项的 `snapshot` 结构与最新榜单相同）：
+接口按平台静态目录顺序串行刷新：起点为 4 个榜单，番茄为 74 个榜单。单个榜单失败不会中止后续任务。成功项和失败项都包含 `rankTypeKey`、`rankType`；失败项只暴露固定错误码：
 
 ```json
 [
   {
-    "rankType": "yuepiao",
+    "rankTypeKey": "0_1_1139",
+    "rankType": "女频-新书榜-古风世情",
     "success": true,
     "snapshot": {
       "id": "6a7dbdbc-6011-44e7-bc14-f11ac4977001",
-      "platform": "qidian",
-      "rankType": "yuepiao",
-      "sourceUrl": "https://www.qidian.com/rank/yuepiao/",
-      "fetchedAt": "2026-07-20T06:00:00.000Z",
-      "createdAt": "2026-07-20T06:00:01.000Z",
+      "platform": "fanqie",
+      "rankTypeKey": "0_1_1139",
+      "rankType": "女频-新书榜-古风世情",
+      "sourceUrl": "https://fanqienovel.com/rank/0_1_1139",
+      "fetchedAt": "2026-07-24T00:30:00.000Z",
+      "createdAt": "2026-07-24T00:30:01.000Z",
       "items": []
     }
   },
   {
-    "rankType": "hotsales",
+    "rankTypeKey": "0_2_1139",
+    "rankType": "女频-阅读榜-古风世情",
     "success": false,
     "error": "RANKING_REFRESH_FAILED"
-  },
-  {
-    "rankType": "recom",
-    "success": true,
-    "snapshot": {
-      "id": "13a848df-6f27-4e84-908b-ec9b83ed3001",
-      "platform": "qidian",
-      "rankType": "recom",
-      "sourceUrl": "https://www.qidian.com/rank/recom/",
-      "fetchedAt": "2026-07-20T06:00:02.000Z",
-      "createdAt": "2026-07-20T06:00:03.000Z",
-      "items": []
-    }
-  },
-  {
-    "rankType": "collect",
-    "success": true,
-    "snapshot": {
-      "id": "4213f078-8368-4f33-b128-cc682b68d001",
-      "platform": "qidian",
-      "rankType": "collect",
-      "sourceUrl": "https://www.qidian.com/rank/collect/",
-      "fetchedAt": "2026-07-20T06:00:04.000Z",
-      "createdAt": "2026-07-20T06:00:05.000Z",
-      "items": []
-    }
   }
 ]
 ```
 
-示例中的 `items` 为节省篇幅而省略；真实成功快照始终包含 10 条记录。
+示例省略了成功快照的条目；真实成功快照始终包含 10 条记录。
 
 ## 查询书籍详情
 
@@ -141,51 +127,37 @@ POST /v1/rankings/:platform/refresh
 GET /v1/books/:platform/:bookId
 ```
 
-缓存存在且未过期时直接返回，不访问起点。缓存不存在或已过期时同步采集并保存最近一次成功结果。
+缓存存在且未过期时直接返回，不访问外站。缓存不存在或已过期时同步采集并 upsert 最近一次成功结果。
+
+番茄数字书号示例：
+
+```http
+GET /v1/books/fanqie/7420000000000000000
+```
 
 成功响应（`200`）：
 
 ```json
 {
   "bookId": "ae081572-9484-4dd0-ae9a-16ce31013001",
-  "platform": "qidian",
-  "externalBookId": "1031940621",
+  "platform": "fanqie",
+  "externalBookId": "7420000000000000000",
   "title": "作品标题",
   "author": "作者名称",
   "description": "规范化后的作品简介",
-  "coverUrl": "https://bookcover.yuewen.com/example.jpg",
-  "genres": ["玄幻", "东方玄幻"],
-  "bookStatus": "连载",
-  "wordCount": 1234567,
-  "metadata": {
-    "datePublished": "2022-10-07T18:08:41+08:00",
-    "dateModified": "2026-07-20T20:03:54+08:00",
-    "totalRecommendations": 6335600,
-    "weeklyRecommendations": 11200
-  },
-  "sourceUrl": "https://www.qidian.com/book/1031940621/",
-  "fetchedAt": "2026-07-20T06:00:00.000Z",
-  "expiresAt": "2026-07-20T09:00:00.000Z",
+  "coverUrl": "https://example.com/cover.jpg",
+  "genres": ["古风世情"],
+  "bookStatus": "连载中",
+  "wordCount": 789000,
+  "metadata": {},
+  "sourceUrl": "https://fanqienovel.com/page/7420000000000000000",
+  "fetchedAt": "2026-07-24T00:31:00.000Z",
+  "expiresAt": "2026-07-24T03:31:00.000Z",
   "stale": false
 }
 ```
 
-V0.1 从以下来源提取数据：
-- **JSON-LD** 结构化脚本（`application/ld+json`）：书名、作者、简介、封面、分类、发布日期
-- **OG meta 标签**：作品状态
-- **DOM 选择器**：字数（`p.count > em:first-of-type`）、总推荐、周推荐（`p.count` 内后续 `<em>` 元素）、更新时间（`span.update-time`）
-
-过期详情刷新失败时仍返回 `200` 和旧数据，`stale` 为 `true`。失败不会覆盖旧行，`fetchedAt`、`expiresAt` 和其他详情字段保持最近一次成功值。
-
-首次采集失败且没有缓存时返回 `502`：
-
-```json
-{
-  "statusCode": 502,
-  "message": "Failed to fetch book detail",
-  "error": "Bad Gateway"
-}
-```
+过期详情刷新失败时仍返回 `200` 和最近一次成功数据，`stale` 为 `true`。失败不会覆盖旧行。首次采集失败且没有缓存时返回 `502`。
 
 ## 强制刷新书籍详情
 
@@ -193,18 +165,21 @@ V0.1 从以下来源提取数据：
 POST /v1/books/:platform/:bookId/refresh
 ```
 
-跳过 TTL 缓存检查，直接触发 Playwright 采集并覆盖数据库记录。响应结构与"查询书籍详情"成功响应一致。采集或校验失败返回 `502`。
+例如：
 
-## 参数错误
-
-不支持的平台、榜单类型或非纯数字 `bookId` 返回 `400`。NestJS 会以数组形式列出具体 DTO 校验消息，例如：
-
-```json
-{
-  "statusCode": 400,
-  "message": ["bookId must match /^\\d+$/ regular expression"],
-  "error": "Bad Request"
-}
+```http
+POST /v1/books/fanqie/7420000000000000000/refresh
 ```
 
-V0.1 不提供榜单历史查询、Swagger/OpenAPI 页面、API Key 鉴权或自定义错误包装。
+该接口跳过 TTL 检查并同步采集。成功时 upsert 详情并返回 `stale: false`；失败时返回安全的 `502`，且不会覆盖最近一次成功数据。
+
+## 错误语义
+
+- `400 Bad Request`：平台、榜单机器键或书号形状不受支持。
+- `404 Not Found`：榜单键合法，但数据库中还没有成功快照。
+- `502 Bad Gateway`：采集、解析、完整性校验或持久化失败；响应不包含上游敏感信息。
+- 详情 TTL 过期且刷新失败：存在旧缓存时返回 `200` 与 `stale: true`，不存在缓存时返回 `502`。
+
+## V0.2.0 范围外
+
+V0.2.0 不提供榜单历史查询、番茄分类远程发现、跨平台书籍去重、刷新鉴权、Swagger/OpenAPI 页面或自定义响应包装。部署时应在反向代理或网络边界限制 POST 刷新端点。
