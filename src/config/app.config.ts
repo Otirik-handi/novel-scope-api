@@ -9,6 +9,8 @@ export default registerAs("app", () => {
     bookDetailTtlHours: environment.BOOK_DETAIL_TTL_HOURS,
     rankingRefreshEnabled: process.env.NODE_ENV !== "test",
     rankingRefreshCron: environment.RANKING_REFRESH_CRON,
+    qidianRankingRefreshCron: environment.RANKING_REFRESH_CRON,
+    fanqieRankingRefreshCron: environment.FANQIE_RANKING_REFRESH_CRON,
     rankingRefreshTimeZone: environment.RANKING_REFRESH_TIME_ZONE,
   };
 });

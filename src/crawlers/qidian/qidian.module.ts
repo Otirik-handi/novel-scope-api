@@ -22,7 +22,7 @@ type PageFetcher = {
       useFactory: (config: ConfigType<typeof crawlerConfig>) =>
         new QidianBrowserClient({
           logger: new Logger("QidianBrowserClient"),
-          requestTimeoutMs: config.requestTimeoutMs,
+          requestTimeoutMs: config.qidianRequestTimeoutMs,
         }),
     },
     {
@@ -31,7 +31,7 @@ type PageFetcher = {
       useFactory: (config: ConfigType<typeof crawlerConfig>) =>
         new QidianClient({
           logger: new Logger("QidianClient"),
-          requestTimeoutMs: config.requestTimeoutMs,
+          requestTimeoutMs: config.qidianRequestTimeoutMs,
           userAgent: config.qidianUserAgent,
         }),
     },

@@ -6,6 +6,7 @@ export default registerAs("crawler", () => {
 
   return {
     qidianUserAgent: environment.QIDIAN_USER_AGENT,
-    requestTimeoutMs: environment.QIDIAN_REQUEST_TIMEOUT_MS,
+    qidianRequestTimeoutMs: environment.QIDIAN_REQUEST_TIMEOUT_MS,
+    fanqieRequestTimeoutMs: environment.FANQIE_REQUEST_TIMEOUT_MS,
   };
 });
