@@ -1,6 +1,10 @@
 ﻿import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CrawledRankingItem, RankType } from "../../interfaces";
+import type { CrawledRankingItem } from "../../interfaces";
+import {
+  QidianRankingCatalog,
+  type QidianRankTypeKey,
+} from "./qidian-ranking.catalog";
 import { QidianRankingParser } from "./qidian-ranking.parser";
 
 const FETCHED_AT = new Date("2026-07-20T12:00:00.000Z");
@@ -14,52 +18,55 @@ function fixture(name: string): string {
 
 describe("QidianRankingParser", () => {
   const parser = new QidianRankingParser();
+  const catalog = new QidianRankingCatalog();
 
   it.each<{
-    rankType: RankType;
+    rankTypeKey: QidianRankTypeKey;
     fixtureName: string;
     metricName: string;
     firstBookId: string;
   }>([
     {
-      rankType: "yuepiao",
+      rankTypeKey: "yuepiao",
       fixtureName: "ranking-yuepiao.html",
       metricName: "monthlyTickets",
       firstBookId: "1100000001",
     },
     {
-      rankType: "hotsales",
+      rankTypeKey: "hotsales",
       fixtureName: "ranking-hotsales.html",
       metricName: "sales",
       firstBookId: "1200000001",
     },
     {
-      rankType: "recom",
+      rankTypeKey: "recom",
       fixtureName: "ranking-recom.html",
       metricName: "recommendations",
       firstBookId: "1300000001",
     },
     {
-      rankType: "collect",
+      rankTypeKey: "collect",
       fixtureName: "ranking-collect.html",
       metricName: "collections",
       firstBookId: "1400000001",
     },
   ])(
-    "parses the $rankType Top 10 fixture",
-    ({ rankType, fixtureName, metricName, firstBookId }) => {
-      const sourceUrl = `https://www.qidian.com/rank/${rankType}/`;
+    "parses the $rankTypeKey Top 10 fixture",
+    ({ rankTypeKey, fixtureName, metricName, firstBookId }) => {
+      const sourceUrl = `https://www.qidian.com/rank/${rankTypeKey}/`;
+      const definition = catalog.resolve(rankTypeKey)!;
 
       const result = parser.parse({
         html: fixture(fixtureName),
-        rankType,
+        definition,
         sourceUrl,
         fetchedAt: FETCHED_AT,
       });
 
       expect(result).toMatchObject({
         platform: "qidian",
-        rankType,
+        rankTypeKey,
+        rankType: definition.rankType,
         sourceUrl,
         fetchedAt: FETCHED_AT,
       });
@@ -76,14 +83,14 @@ describe("QidianRankingParser", () => {
       ).toBe(10);
       expect(result.items[0]).toMatchObject({
         externalBookId: firstBookId,
-        title: `${rankType} 小说 1`,
-        author: `${rankType} 作者 1`,
+        title: `${rankTypeKey} 小说 1`,
+        author: `${rankTypeKey} 作者 1`,
         sourceUrl: `https://www.qidian.com/book/${firstBookId}/`,
         metrics: {},
       });
       expect(result.items[9]).toMatchObject({
-        title: `${rankType} 小说 10`,
-        author: `${rankType} 作者 10`,
+        title: `${rankTypeKey} 小说 10`,
+        author: `${rankTypeKey} 作者 10`,
         metrics: {},
       });
     },
@@ -98,7 +105,7 @@ describe("QidianRankingParser", () => {
     expect(() =>
       parser.parse({
         html: fixture(fixtureName),
-        rankType: "yuepiao",
+        definition: catalog.resolve("yuepiao")!,
         sourceUrl: "https://www.qidian.com/rank/yuepiao/",
         fetchedAt: FETCHED_AT,
       }),
@@ -117,7 +124,7 @@ describe("QidianRankingParser", () => {
     expect(() =>
       parser.parse({
         html: `<div id="book-img-text"><ul>${items}</ul></div>`,
-        rankType: "yuepiao",
+        definition: catalog.resolve("yuepiao")!,
         sourceUrl: "https://www.qidian.com/rank/yuepiao/",
         fetchedAt: FETCHED_AT,
       }),
@@ -137,7 +144,7 @@ describe("QidianRankingParser", () => {
 
     const result = parser.parse({
       html: `<div id="book-img-text"><ul>${items}</ul></div>`,
-      rankType: "yuepiao",
+      definition: catalog.resolve("yuepiao")!,
       sourceUrl: "https://www.qidian.com/rank/yuepiao/",
       fetchedAt: FETCHED_AT,
     });
@@ -156,7 +163,7 @@ describe("QidianRankingParser", () => {
 
     const result = parser.parse({
       html: `<div id="book-img-text"><ul>${items}</ul></div>`,
-      rankType: "yuepiao",
+      definition: catalog.resolve("yuepiao")!,
       sourceUrl: "https://www.qidian.com/rank/yuepiao/",
       fetchedAt: FETCHED_AT,
     });
@@ -176,7 +183,7 @@ describe("QidianRankingParser", () => {
     expect(() =>
       parser.parse({
         html: `<div id="book-img-text"><ul>${items}</ul></div>`,
-        rankType: "yuepiao",
+        definition: catalog.resolve("yuepiao")!,
         sourceUrl: "https://www.qidian.com/rank/yuepiao/",
         fetchedAt: FETCHED_AT,
       }),

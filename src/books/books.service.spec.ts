@@ -33,6 +33,19 @@ const storedBook = {
   expiresAt: new Date("2026-07-20T15:00:00.000Z"),
 };
 
+const fanqieCrawledBook: CrawledBook = {
+  ...crawledBook,
+  platform: "fanqie",
+  externalBookId: "7621419029625834521",
+  sourceUrl: "https://fanqienovel.com/page/7621419029625834521",
+};
+
+const fanqieStoredBook = {
+  ...fanqieCrawledBook,
+  bookId: "8b53fc42-4e7a-460b-8b53-a79b80ad36b1",
+  expiresAt: new Date("2026-07-20T15:00:00.000Z"),
+};
+
 const invalidCrawledBooks: Array<[string, CrawledBook]> = [
   [
     "a different platform",
@@ -70,8 +83,8 @@ function expectSafeLog(
   loggerError: { mock: { calls: unknown[][] } },
   context: string,
 ): void {
-  expect(loggerError.mock.calls.length).toBe(1);expect(loggerError.mock.calls.length).toBe(1);
-    expect(loggerError.mock.calls[0][0]).toContain(context);    expect(loggerError.mock.calls[0][0]).toContain(context);
+  expect(loggerError.mock.calls.length).toBe(1);
+  expect(loggerError.mock.calls[0][0]).toContain(context);
   const serialized = JSON.stringify(loggerError.mock.calls).toLowerCase();
   expect(serialized).not.toContain("secret");
   expect(serialized).not.toContain("token");
@@ -324,4 +337,93 @@ describe("BooksService", () => {
       );
     },
   );
+
+  describe("Fanqie shared cache semantics", () => {
+    const bookId = "7621419029625834521";
+
+    it("returns a fresh cached Fanqie detail without selecting a crawler", async () => {
+      const { service, repository, crawlersService } = createSubject();
+      repository.findDetail.mockResolvedValue(fanqieStoredBook);
+
+      await expect(service.getDetail("fanqie", bookId)).resolves.toEqual({
+        ...fanqieStoredBook,
+        stale: false,
+      });
+      expect(crawlersService.getBookCrawler).not.toHaveBeenCalled();
+    });
+
+    it("crawls and stores a missing Fanqie detail", async () => {
+      const { service, repository, crawlersService, bookCrawler } =
+        createSubject();
+      repository.findDetail.mockResolvedValue(null);
+      bookCrawler.crawl.mockResolvedValue(fanqieCrawledBook);
+      repository.upsertDetail.mockResolvedValue(fanqieStoredBook);
+
+      await expect(service.getDetail("fanqie", bookId)).resolves.toEqual({
+        ...fanqieStoredBook,
+        stale: false,
+      });
+      expect(crawlersService.getBookCrawler).toHaveBeenCalledWith("fanqie");
+      expect(repository.upsertDetail).toHaveBeenCalledWith(
+        fanqieCrawledBook,
+        new Date("2026-07-20T15:00:00.000Z"),
+      );
+    });
+
+    it("refreshes an expired Fanqie detail", async () => {
+      const { service, repository, bookCrawler } = createSubject();
+      repository.findDetail.mockResolvedValue({
+        ...fanqieStoredBook,
+        expiresAt: now,
+      });
+      bookCrawler.crawl.mockResolvedValue(fanqieCrawledBook);
+      repository.upsertDetail.mockResolvedValue(fanqieStoredBook);
+
+      await expect(service.getDetail("fanqie", bookId)).resolves.toMatchObject({
+        stale: false,
+      });
+      expect(bookCrawler.crawl).toHaveBeenCalledWith(bookId);
+    });
+
+    it("serves an unchanged expired Fanqie detail as stale after failure", async () => {
+      const expired = {
+        ...fanqieStoredBook,
+        title: "最近一次成功标题",
+        expiresAt: new Date("2026-07-20T11:00:00.000Z"),
+      };
+      const { service, repository, bookCrawler } = createSubject();
+      jest.spyOn(Logger.prototype, "error").mockImplementation();
+      repository.findDetail.mockResolvedValue(expired);
+      bookCrawler.crawl.mockRejectedValue(new Error("blocked"));
+
+      await expect(service.getDetail("fanqie", bookId)).resolves.toEqual({
+        ...expired,
+        stale: true,
+      });
+      expect(repository.upsertDetail).not.toHaveBeenCalled();
+    });
+
+    it("does not overwrite an old row when forced Fanqie refresh fails", async () => {
+      const { service, repository, bookCrawler } = createSubject();
+      jest.spyOn(Logger.prototype, "error").mockImplementation();
+      bookCrawler.crawl.mockRejectedValue(new Error("blocked"));
+
+      await expect(service.refreshDetail("fanqie", bookId)).rejects.toBeInstanceOf(
+        BookRefreshError,
+      );
+      expect(repository.findDetail).not.toHaveBeenCalled();
+      expect(repository.upsertDetail).not.toHaveBeenCalled();
+    });
+
+    it("persists a successful forced Fanqie refresh", async () => {
+      const { service, repository, bookCrawler } = createSubject();
+      bookCrawler.crawl.mockResolvedValue(fanqieCrawledBook);
+      repository.upsertDetail.mockResolvedValue(fanqieStoredBook);
+
+      await expect(service.refreshDetail("fanqie", bookId)).resolves.toEqual({
+        ...fanqieStoredBook,
+        stale: false,
+      });
+    });
+  });
 });

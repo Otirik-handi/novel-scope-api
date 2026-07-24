@@ -28,13 +28,16 @@ describe("BooksModule", () => {
         .overrideProvider(appConfig.KEY)
         .useValue({
           bookDetailTtlHours: 3,
-          rankingRefreshCron: "0 0 6 * * *",
+          rankingRefreshEnabled: false,
+          qidianRankingRefreshCron: "0 0 6 * * *",
+          fanqieRankingRefreshCron: "0 30 0 * * *",
           rankingRefreshTimeZone: "Asia/Shanghai",
         })
         .overrideProvider(crawlerConfig.KEY)
         .useValue({
           qidianUserAgent: "NovelScope books module tests",
-          requestTimeoutMs: 1_000,
+          qidianRequestTimeoutMs: 1_000,
+          fanqieRequestTimeoutMs: 1_000,
         })
         .compile();
 
@@ -69,7 +72,8 @@ describe("BooksModule", () => {
       .overrideProvider(crawlerConfig.KEY)
       .useValue({
         qidianUserAgent: "NovelScope books module tests",
-        requestTimeoutMs: 1_000,
+        qidianRequestTimeoutMs: 1_000,
+        fanqieRequestTimeoutMs: 1_000,
       })
       .compile();
 
