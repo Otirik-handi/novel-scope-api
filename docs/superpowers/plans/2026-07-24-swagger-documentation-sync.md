@@ -181,9 +181,9 @@ Expected: 只有本计划文件和四个目标文件进入提交。
 > **记录点：Task 3（每完成一个 Step 立即更新）**
 >
 > - 状态：`进行中`
-> - 已完成步骤：`2/6`
-> - 恢复入口：`Step 3：清理 worktree 和本地功能分支`
-> - 验证证据：`git fetch origin 退出码 0；git rev-list --left-right --count origin/main...main 输出 0 40，远端无本地尚未包含的新提交；git merge --ff-only docs/swagger-documentation-sync 退出码 0，main 从 042a409 快进到 49c5a41`
+> - 已完成步骤：`3/6`
+> - 恢复入口：`Step 4：在 main 上做首次最终状态检查`
+> - 验证证据：`git fetch origin 退出码 0；git rev-list --left-right --count origin/main...main 输出 0 40，远端无本地尚未包含的新提交；git merge --ff-only docs/swagger-documentation-sync 退出码 0，main 从 042a409 快进到 49c5a41；功能 worktree 干净且功能分支为 main 祖先，worktree 与本地功能分支均已删除`
 > - 提交：`尚无（任务未开始）`
 
 - [x] **Step 1：获取远端并检查分叉**
@@ -198,7 +198,7 @@ Run: `git merge --ff-only docs/swagger-documentation-sync`。
 
 Expected: `main` 快进到实现提交，无冲突。
 
-- [ ] **Step 3：清理 worktree 和本地功能分支**
+- [x] **Step 3：清理 worktree 和本地功能分支**
 
 确认功能 worktree 干净且提交已被 `main` 包含，然后运行 `git worktree remove .worktrees/swagger-documentation-sync` 和 `git branch -d docs/swagger-documentation-sync`。
 
