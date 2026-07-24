@@ -1,4 +1,8 @@
-import { BadGatewayException, NotFoundException } from "@nestjs/common";
+import {
+  BadGatewayException,
+  BadRequestException,
+  NotFoundException,
+} from "@nestjs/common";
 import { validate } from "class-validator";
 import { RankingParamsDto } from "./dto/ranking-params.dto";
 import { PlatformParamsDto } from "./dto/platform-params.dto";
@@ -8,18 +12,19 @@ import type { RankingsService } from "./rankings.service";
 describe("ranking route DTOs", () => {
   it.each([
     [PlatformParamsDto, { platform: "other" }],
-    [RankingParamsDto, { platform: "qidian", rankType: "unknown" }],
+    [RankingParamsDto, { platform: "qidian", rankTypeKey: "" }],
   ])("rejects unsupported route parameters", async (Dto, values) => {
     const dto = Object.assign(new Dto(), values);
 
     await expect(validate(dto)).resolves.not.toHaveLength(0);
   });
 
-  it("accepts qidian and a supported ranking type", async () => {
-    const dto = Object.assign(new RankingParamsDto(), {
-      platform: "qidian",
-      rankType: "collect",
-    });
+  it.each([
+    { platform: "qidian", rankTypeKey: "collect" },
+    { platform: "fanqie", rankTypeKey: "0_1_1139" },
+    { platform: "qidian", rankTypeKey: "unknown" },
+  ])("accepts a non-empty ranking key shape for $platform", async (values) => {
+    const dto = Object.assign(new RankingParamsDto(), values);
 
     await expect(validate(dto)).resolves.toHaveLength(0);
   });
@@ -43,8 +48,17 @@ describe("RankingsController", () => {
     service.getLatest.mockRejectedValue(new NotFoundException());
 
     await expect(
-      controller.getLatest({ platform: "qidian", rankType: "yuepiao" }),
+      controller.getLatest({ platform: "qidian", rankTypeKey: "yuepiao" }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("preserves a catalog validation error from latest queries", async () => {
+    const { controller, service } = createSubject();
+    service.getLatest.mockRejectedValue(new BadRequestException());
+
+    await expect(
+      controller.getLatest({ platform: "fanqie", rankTypeKey: "unknown" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("maps a single ranking refresh failure to BadGatewayException", async () => {
@@ -52,13 +66,30 @@ describe("RankingsController", () => {
     service.refresh.mockRejectedValue(new Error("crawler blocked"));
 
     await expect(
-      controller.refresh({ platform: "qidian", rankType: "hotsales" }),
+      controller.refresh({ platform: "qidian", rankTypeKey: "hotsales" }),
     ).rejects.toBeInstanceOf(BadGatewayException);
+  });
+
+  it("does not map catalog validation errors to BadGatewayException", async () => {
+    const { controller, service } = createSubject();
+    const error = new BadRequestException("Unsupported ranking type key");
+    service.refresh.mockRejectedValue(error);
+
+    await expect(
+      controller.refresh({ platform: "fanqie", rankTypeKey: "unknown" }),
+    ).rejects.toBe(error);
   });
 
   it("returns each result from an all-ranking refresh", async () => {
     const { controller, service } = createSubject();
-    const results = [{ rankType: "yuepiao", success: false, error: "blocked" }];
+    const results = [
+      {
+        rankTypeKey: "yuepiao",
+        rankType: "月票榜",
+        success: false,
+        error: "RANKING_REFRESH_FAILED",
+      },
+    ];
     service.refreshAll.mockResolvedValue(results);
 
     await expect(controller.refreshAll({ platform: "qidian" })).resolves.toBe(

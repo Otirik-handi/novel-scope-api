@@ -9,7 +9,8 @@ describe("crawler contracts", () => {
   it("represents a platform ranking without persistence or HTTP fields", async () => {
     const ranking: CrawledRanking = {
       platform: "qidian",
-      rankType: "yuepiao",
+      rankTypeKey: "yuepiao",
+      rankType: "月票榜",
       sourceUrl: "https://www.qidian.com/rank/yuepiao/",
       fetchedAt: new Date("2026-07-20T12:00:00.000Z"),
       items: [
@@ -25,7 +26,7 @@ describe("crawler contracts", () => {
       ],
     };
     const crawler: RankingCrawler = {
-      crawl: async (rankType) => ({ ...ranking, rankType }),
+      crawl: async (rankTypeKey) => ({ ...ranking, rankTypeKey }),
     };
 
     await expect(crawler.crawl("yuepiao")).resolves.toEqual(ranking);
