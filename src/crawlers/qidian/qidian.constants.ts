@@ -1,4 +1,4 @@
-﻿import type { RankType } from "../interfaces";
+import type { QidianRankTypeKey } from "./rankings/qidian-ranking.catalog";
 
 export const QIDIAN_BASE_URL = "https://www.qidian.com";
 
@@ -7,7 +7,7 @@ export const QIDIAN_RANKING_PATHS = {
   hotsales: "/rank/hotsales/",
   recom: "/rank/recom/",
   collect: "/rank/collect/",
-} as const satisfies Record<RankType, string>;
+} as const satisfies Record<QidianRankTypeKey, string>;
 
 export const QIDIAN_BOOK_PATH_PREFIX = "/book/";
 export const QIDIAN_MAX_CONTENT_LENGTH_BYTES = 5 * 1024 * 1024;

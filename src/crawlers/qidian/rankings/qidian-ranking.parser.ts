@@ -2,7 +2,7 @@
 import type {
   CrawledRanking,
   CrawledRankingItem,
-  RankType,
+  RankingDefinition,
 } from "../../interfaces";
 import {
   normalizeHtmlNodesText,
@@ -15,7 +15,7 @@ const RANKING_ITEM_SELECTOR = "#book-img-text > ul > li";
 
 export interface QidianRankingParseInput {
   html: string;
-  rankType: RankType;
+  definition: RankingDefinition;
   sourceUrl: string;
   fetchedAt: Date;
 }
@@ -31,7 +31,7 @@ export class QidianRankingParser {
     const $ = load(input.html);
     const candidates = $(RANKING_ITEM_SELECTOR).toArray().slice(0, 10);
     this.logger.log(
-      `found ${candidates.length} candidate items for ${input.rankType}`,
+      `found ${candidates.length} candidate items for ${input.definition.rankTypeKey}`,
     );
 
     let nullCount = 0;
@@ -101,12 +101,13 @@ export class QidianRankingParser {
     }
 
     this.logger.log(
-      `${completeItems.length}/10 items parsed for ${input.rankType}`,
+      `${completeItems.length}/10 items parsed for ${input.definition.rankTypeKey}`,
     );
 
     return {
-      platform: "qidian",
-      rankType: input.rankType,
+      platform: input.definition.platform,
+      rankTypeKey: input.definition.rankTypeKey,
+      rankType: input.definition.rankType,
       sourceUrl: input.sourceUrl,
       fetchedAt: input.fetchedAt,
       items: completeItems,

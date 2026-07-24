@@ -1,6 +1,5 @@
 import type { Platform } from "../../shared/types/platform.type";
 import type { CrawlerJsonObject } from "./crawler-json.type";
-import type { RankType } from "./rank-type";
 
 export interface CrawledRankingItem {
   rank: number;
@@ -14,12 +13,13 @@ export interface CrawledRankingItem {
 
 export interface CrawledRanking {
   platform: Platform;
-  rankType: RankType;
+  rankTypeKey: string;
+  rankType: string;
   sourceUrl: string;
   fetchedAt: Date;
   items: CrawledRankingItem[];
 }
 
 export interface RankingCrawler {
-  crawl(rankType: RankType): Promise<CrawledRanking>;
+  crawl(rankTypeKey: string): Promise<CrawledRanking>;
 }

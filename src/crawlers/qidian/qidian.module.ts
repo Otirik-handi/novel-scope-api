@@ -4,6 +4,7 @@ import crawlerConfig from "../../config/crawler.config";
 import { QidianBookCrawler } from "./books/qidian-book.crawler";
 import { QidianBrowserClient } from "./qidian-browser.client";
 import { QidianClient } from "./qidian.client";
+import { QidianRankingCatalog } from "./rankings/qidian-ranking.catalog";
 import { QidianRankingCrawler } from "./rankings/qidian-ranking.crawler";
 import type { QidianPage } from "./qidian.client";
 
@@ -14,6 +15,7 @@ type PageFetcher = {
 @Module({
   imports: [ConfigModule.forFeature(crawlerConfig)],
   providers: [
+    QidianRankingCatalog,
     {
       provide: QidianBrowserClient,
       inject: [crawlerConfig.KEY],
@@ -35,9 +37,11 @@ type PageFetcher = {
     },
     {
       provide: QidianRankingCrawler,
-      inject: [QidianBrowserClient],
-      useFactory: (client: PageFetcher) =>
-        new QidianRankingCrawler(client),
+      inject: [QidianBrowserClient, QidianRankingCatalog],
+      useFactory: (
+        client: PageFetcher,
+        catalog: QidianRankingCatalog,
+      ) => new QidianRankingCrawler(client, catalog),
     },
     {
       provide: QidianBookCrawler,
@@ -46,6 +50,10 @@ type PageFetcher = {
         new QidianBookCrawler(client),
     },
   ],
-  exports: [QidianRankingCrawler, QidianBookCrawler],
+  exports: [
+    QidianRankingCatalog,
+    QidianRankingCrawler,
+    QidianBookCrawler,
+  ],
 })
 export class QidianModule {}
