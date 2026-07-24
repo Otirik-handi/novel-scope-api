@@ -65,6 +65,7 @@ describe("database schema", () => {
     return {
       id,
       platform: "qidian",
+      rankTypeKey: `integration-${suffix}`,
       rankType: `integration-${suffix}`,
       sourceUrl: `https://www.qidian.com/rank/${suffix}`,
       fetchedAt: new Date(),
@@ -85,13 +86,8 @@ describe("database schema", () => {
         continue;
       }
 
-      const migration = await readFile(
-        join(migrationsDirectory, entry.name, "migration.sql"),
-      );
-      repositoryChecksums.set(
-        entry.name,
-        createHash("sha256").update(migration).digest("hex"),
-      );
+      const migration = await readFile(join(migrationsDirectory, entry.name, "migration.sql"));
+      repositoryChecksums.set(entry.name, createHash("sha256").update(migration).digest("hex"));
     }
 
     const appliedMigrations = await prisma.$queryRaw<
@@ -104,10 +100,7 @@ describe("database schema", () => {
 
     expect(appliedMigrations.length).toBeGreaterThan(0);
     for (const appliedMigration of appliedMigrations) {
-      if (
-        repositoryChecksums.get(appliedMigration.migrationName) !==
-        appliedMigration.checksum
-      ) {
+      if (repositoryChecksums.get(appliedMigration.migrationName) !== appliedMigration.checksum) {
         throw new Error(
           `Applied migration ${appliedMigration.migrationName} checksum does not match repository`,
         );
@@ -167,12 +160,27 @@ describe("database schema", () => {
   it("enforces one book per platform and external id", async () => {
     const data = bookData("book-unique");
     await prisma.book.create({ data });
+    await expect(
+      prisma.book.create({
+        data: {
+          ...bookData("book-cross-platform"),
+          platform: "fanqie",
+          externalBookId: data.externalBookId,
+        },
+      }),
+    ).resolves.toMatchObject({
+      platform: "fanqie",
+      externalBookId: data.externalBookId,
+    });
 
     await expectUniqueViolation(
       prisma.book.create({
         data: { ...bookData("discarded"), externalBookId: data.externalBookId },
       }),
     );
+    await expect(
+      prisma.book.count({ where: { externalBookId: data.externalBookId } }),
+    ).resolves.toBe(2);
   });
 
   it("enforces at most one detail per book", async () => {
@@ -255,26 +263,16 @@ describe("database schema", () => {
       },
     });
 
-    await expect(
-      prisma.book.delete({ where: { id: book.id } }),
-    ).rejects.toThrow();
-    expect(
-      await prisma.rankingItem.findUnique({ where: { id: item.id } }),
-    ).not.toBeNull();
-    expect(
-      await prisma.bookDetail.findUnique({ where: { bookId: book.id } }),
-    ).not.toBeNull();
+    await expect(prisma.book.delete({ where: { id: book.id } })).rejects.toThrow();
+    expect(await prisma.rankingItem.findUnique({ where: { id: item.id } })).not.toBeNull();
+    expect(await prisma.bookDetail.findUnique({ where: { bookId: book.id } })).not.toBeNull();
 
     await prisma.rankingSnapshot.delete({ where: { id: snapshot.id } });
     createdSnapshotIds.delete(snapshot.id);
-    expect(
-      await prisma.rankingItem.findUnique({ where: { id: item.id } }),
-    ).toBeNull();
+    expect(await prisma.rankingItem.findUnique({ where: { id: item.id } })).toBeNull();
 
     await prisma.book.delete({ where: { id: book.id } });
     createdBookIds.delete(book.id);
-    expect(
-      await prisma.bookDetail.findUnique({ where: { bookId: book.id } }),
-    ).toBeNull();
+    expect(await prisma.bookDetail.findUnique({ where: { bookId: book.id } })).toBeNull();
   });
 });

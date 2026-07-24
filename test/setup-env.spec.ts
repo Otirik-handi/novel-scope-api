@@ -17,6 +17,8 @@ const environmentKeys = [
   "TEST_DATABASE_URL",
   "NODE_ENV",
   "QIDIAN_USER_AGENT",
+  "FANQIE_REQUEST_TIMEOUT_MS",
+  "FANQIE_RANKING_REFRESH_CRON",
 ] as const;
 
 describe("createE2eApplication lifecycle", () => {
@@ -24,11 +26,12 @@ describe("createE2eApplication lifecycle", () => {
     environmentKeys.map((key) => [key, process.env[key]]),
   );
   const crawlersService = {
+    getRankingCatalog: jest.fn(),
     getRankingCrawler: jest.fn(),
     getBookCrawler: jest.fn(),
   } as unknown as Pick<
     CrawlersService,
-    "getRankingCrawler" | "getBookCrawler"
+    "getRankingCatalog" | "getRankingCrawler" | "getBookCrawler"
   >;
   let app: {
     useLogger: jest.Mock;
@@ -47,6 +50,8 @@ describe("createE2eApplication lifecycle", () => {
     process.env.TEST_DATABASE_URL = "test-database";
     process.env.NODE_ENV = "development";
     process.env.QIDIAN_USER_AGENT = "original-user-agent";
+    process.env.FANQIE_REQUEST_TIMEOUT_MS = "54321";
+    process.env.FANQIE_RANKING_REFRESH_CRON = "0 15 3 * * *";
     jest.mocked(assertDatabaseIsolation).mockResolvedValue(undefined);
 
     app = {
@@ -57,9 +62,7 @@ describe("createE2eApplication lifecycle", () => {
       get: jest.fn().mockReturnValue({}),
     };
     moduleReference = {
-      createNestApplication: jest
-        .fn()
-        .mockReturnValue(app as unknown as INestApplication),
+      createNestApplication: jest.fn().mockReturnValue(app as unknown as INestApplication),
       close: jest.fn().mockResolvedValue(undefined),
     };
     const builder = {
@@ -86,6 +89,8 @@ describe("createE2eApplication lifecycle", () => {
     expect(process.env.TEST_DATABASE_URL).toBe("test-database");
     expect(process.env.NODE_ENV).toBe("development");
     expect(process.env.QIDIAN_USER_AGENT).toBe("original-user-agent");
+    expect(process.env.FANQIE_REQUEST_TIMEOUT_MS).toBe("54321");
+    expect(process.env.FANQIE_RANKING_REFRESH_CRON).toBe("0 15 3 * * *");
   }
 
   it("closes an app whose initialization fails and preserves the init error", async () => {
@@ -115,9 +120,7 @@ describe("createE2eApplication lifecycle", () => {
       throw createError;
     });
 
-    await expect(createE2eApplication(crawlersService)).rejects.toBe(
-      createError,
-    );
+    await expect(createE2eApplication(crawlersService)).rejects.toBe(createError);
 
     expect(moduleReference.close).toHaveBeenCalledTimes(1);
     expectOriginalEnvironment();
@@ -128,6 +131,8 @@ describe("createE2eApplication lifecycle", () => {
     expect(process.env.DATABASE_URL).toBe("test-database");
     expect(process.env.NODE_ENV).toBe("test");
     expect(process.env.QIDIAN_USER_AGENT).toBe("NovelScope E2E tests");
+    expect(process.env.FANQIE_REQUEST_TIMEOUT_MS).toBe("10000");
+    expect(process.env.FANQIE_RANKING_REFRESH_CRON).toBe("0 30 0 * * *");
 
     await Promise.all([context.close(), context.close()]);
 

@@ -42,7 +42,6 @@ describe("BooksRepository transaction", () => {
 
     await prisma.book.deleteMany({
       where: {
-        platform: "qidian",
         externalBookId: { in: [...createdExternalBookIds] },
       },
     });
@@ -53,10 +52,10 @@ describe("BooksRepository transaction", () => {
     await prisma.$disconnect();
   });
 
-  function makeBook(externalBookId: string): CrawledBook {
+  function makeBook(externalBookId: string, platform: "qidian" | "fanqie" = "qidian"): CrawledBook {
     createdExternalBookIds.add(externalBookId);
     return {
-      platform: "qidian",
+      platform,
       externalBookId,
       title: "首次成功标题",
       author: "测试作者",
@@ -66,7 +65,10 @@ describe("BooksRepository transaction", () => {
       bookStatus: "连载",
       wordCount: 100,
       metadata: { source: "integration" },
-      sourceUrl: `https://www.qidian.com/book/${externalBookId}/`,
+      sourceUrl:
+        platform === "qidian"
+          ? `https://www.qidian.com/book/${externalBookId}/`
+          : `https://fanqienovel.com/page/${externalBookId}`,
       fetchedAt: new Date("2026-07-20T12:00:00.000Z"),
     };
   }
@@ -97,9 +99,7 @@ describe("BooksRepository transaction", () => {
     await expect(
       prisma.book.count({ where: { platform: "qidian", externalBookId } }),
     ).resolves.toBe(1);
-    await expect(
-      prisma.bookDetail.count({ where: { bookId: created.bookId } }),
-    ).resolves.toBe(1);
+    await expect(prisma.bookDetail.count({ where: { bookId: created.bookId } })).resolves.toBe(1);
   });
 
   it("rolls back a newly created Book when detail persistence fails", async () => {
@@ -110,10 +110,7 @@ describe("BooksRepository transaction", () => {
     };
 
     await expect(
-      repository.upsertDetail(
-        invalid,
-        new Date("2026-07-20T15:00:00.000Z"),
-      ),
+      repository.upsertDetail(invalid, new Date("2026-07-20T15:00:00.000Z")),
     ).rejects.toBeDefined();
 
     await expect(
@@ -238,9 +235,7 @@ describe("BooksRepository transaction", () => {
     await expect(
       prisma.book.count({ where: { platform: "qidian", externalBookId } }),
     ).resolves.toBe(1);
-    await expect(
-      prisma.bookDetail.count({ where: { bookId: finalBook.id } }),
-    ).resolves.toBe(1);
+    await expect(prisma.bookDetail.count({ where: { bookId: finalBook.id } })).resolves.toBe(1);
   });
 
   it("lets the later complete write win when fetchedAt values are equal", async () => {
@@ -263,6 +258,46 @@ describe("BooksRepository transaction", () => {
       title: "equal second title",
       fetchedAt,
       expiresAt: secondExpiresAt,
+    });
+  });
+
+  it("keeps details with the same external ID isolated across platforms", async () => {
+    const externalBookId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const qidianBook = {
+      ...makeBook(externalBookId, "qidian"),
+      title: "起点平台标题",
+    };
+    const fanqieBook = {
+      ...makeBook(externalBookId, "fanqie"),
+      title: "番茄平台标题",
+    };
+
+    const qidian = await repository.upsertDetail(qidianBook, new Date("2026-07-20T15:00:00.000Z"));
+    const fanqie = await repository.upsertDetail(fanqieBook, new Date("2026-07-20T15:00:00.000Z"));
+
+    expect(qidian.bookId).not.toBe(fanqie.bookId);
+    await expect(prisma.book.count({ where: { externalBookId } })).resolves.toBe(2);
+    await expect(repository.findDetail("qidian", externalBookId)).resolves.toMatchObject({
+      title: "起点平台标题",
+    });
+    await expect(repository.findDetail("fanqie", externalBookId)).resolves.toMatchObject({
+      title: "番茄平台标题",
+    });
+
+    await repository.upsertDetail(
+      {
+        ...fanqieBook,
+        title: "番茄刷新标题",
+        fetchedAt: new Date("2026-07-20T16:00:00.000Z"),
+      },
+      new Date("2026-07-20T19:00:00.000Z"),
+    );
+
+    await expect(repository.findDetail("qidian", externalBookId)).resolves.toMatchObject({
+      title: "起点平台标题",
+    });
+    await expect(repository.findDetail("fanqie", externalBookId)).resolves.toMatchObject({
+      title: "番茄刷新标题",
     });
   });
 });
