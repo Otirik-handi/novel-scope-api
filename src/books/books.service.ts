@@ -81,13 +81,21 @@ export class BooksService {
     platform: Platform,
     externalBookId: string,
   ): Promise<BookDetailResource> {
-    const crawler = this.crawlersService.getBookCrawler(platform);
-    const crawled = await crawler.crawl(externalBookId);
-    this.assertValidCrawledBook(crawled, platform, externalBookId);
-    const expiresAt = this.calculateExpiresAt(crawled.fetchedAt);
-    const saved = await this.repository.upsertDetail(crawled, expiresAt);
+    try {
+      const crawler = this.crawlersService.getBookCrawler(platform);
+      const crawled = await crawler.crawl(externalBookId);
+      this.assertValidCrawledBook(crawled, platform, externalBookId);
+      const expiresAt = this.calculateExpiresAt(crawled.fetchedAt);
+      const saved = await this.repository.upsertDetail(crawled, expiresAt);
 
-    return { ...saved, stale: false };
+      return { ...saved, stale: false };
+    } catch (error) {
+      this.logger.error(
+        `Failed to refresh book ${platform}/${externalBookId}: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new BookRefreshError(error);
+    }
   }
 
   private isFresh(detail: StoredBookDetail): boolean {

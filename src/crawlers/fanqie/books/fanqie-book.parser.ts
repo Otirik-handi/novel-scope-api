@@ -8,6 +8,7 @@ const MAX_SCRIPT_LENGTH = 2 * 1024 * 1024;
 const MAX_JSON_DEPTH = 64;
 const MAX_JSON_NODES = 50_000;
 const MAX_PRISMA_INT = 2_147_483_647;
+const INITIAL_STATE_ASSIGNMENT = "window.__INITIAL_STATE__=";
 
 export interface FanqieBookParseInput {
   html: string;
@@ -55,9 +56,7 @@ export class FanqieBookParser {
 
   private findBook(html: string, externalBookId: string): Record<string, unknown> {
     const $ = load(html);
-    const scripts = $(
-      'script[type="application/json"], script#__NEXT_DATA__, script[data-testid="book-detail-data"], script#book-detail-data',
-    ).toArray();
+    const scripts = $("script").toArray();
 
     for (const script of scripts) {
       const text = $(script).text().trim();
@@ -66,10 +65,16 @@ export class FanqieBookParser {
         continue;
       }
 
+      const jsonText = this.extractJsonText(text);
+
+      if (jsonText === null) {
+        continue;
+      }
+
       let value: unknown;
 
       try {
-        value = JSON.parse(text) as unknown;
+        value = JSON.parse(jsonText) as unknown;
       } catch {
         continue;
       }
@@ -82,6 +87,39 @@ export class FanqieBookParser {
     }
 
     throw new FanqieBookParseError("Fanqie book data was unavailable");
+  }
+
+  private extractJsonText(text: string): string | null {
+    const assignmentIndex = text.indexOf(INITIAL_STATE_ASSIGNMENT);
+
+    if (assignmentIndex === -1) {
+      return text;
+    }
+
+    if (
+      text.indexOf(
+        INITIAL_STATE_ASSIGNMENT,
+        assignmentIndex + INITIAL_STATE_ASSIGNMENT.length,
+      ) !== -1
+    ) {
+      return null;
+    }
+
+    const prefix = text.slice(0, assignmentIndex);
+    const assignmentEnd = text.lastIndexOf(";");
+
+    if (
+      !/^\s*\(\s*function\s*\(\s*\)\s*\{\s*$/.test(prefix) ||
+      assignmentEnd <= assignmentIndex + INITIAL_STATE_ASSIGNMENT.length ||
+      !/^\s*\}\s*\)\s*\(\s*\)\s*$/.test(text.slice(assignmentEnd + 1))
+    ) {
+      return null;
+    }
+
+    return text.slice(
+      assignmentIndex + INITIAL_STATE_ASSIGNMENT.length,
+      assignmentEnd,
+    );
   }
 
   private findMatchingObject(
