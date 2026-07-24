@@ -44,7 +44,7 @@ export class CrawlersService {
     }
   }
 
-  private unsupportedPlatform(platform: never): never {
+  private unsupportedPlatform(platform: Platform): never {
     throw new Error(`Unsupported crawler platform: ${String(platform)}`);
   }
 }
