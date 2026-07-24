@@ -23,36 +23,31 @@ describe("QidianRankingParser", () => {
   it.each<{
     rankTypeKey: QidianRankTypeKey;
     fixtureName: string;
-    metricName: string;
     firstBookId: string;
   }>([
     {
       rankTypeKey: "yuepiao",
       fixtureName: "ranking-yuepiao.html",
-      metricName: "monthlyTickets",
       firstBookId: "1100000001",
     },
     {
       rankTypeKey: "hotsales",
       fixtureName: "ranking-hotsales.html",
-      metricName: "sales",
       firstBookId: "1200000001",
     },
     {
       rankTypeKey: "recom",
       fixtureName: "ranking-recom.html",
-      metricName: "recommendations",
       firstBookId: "1300000001",
     },
     {
       rankTypeKey: "collect",
       fixtureName: "ranking-collect.html",
-      metricName: "collections",
       firstBookId: "1400000001",
     },
   ])(
     "parses the $rankTypeKey Top 10 fixture",
-    ({ rankTypeKey, fixtureName, metricName, firstBookId }) => {
+    ({ rankTypeKey, fixtureName, firstBookId }) => {
       const sourceUrl = `https://www.qidian.com/rank/${rankTypeKey}/`;
       const definition = catalog.resolve(rankTypeKey)!;
 
