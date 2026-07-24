@@ -77,10 +77,16 @@ npm run db:generate
 
 ## 启动
 
-开发模式（文件变化时重启）：
+开发模式会先使用 Swagger CLI 插件编译应用、迁移开发数据库，再启动文件监听：
 
 ```powershell
-npm run start:dev
+bun run dev
+```
+
+只执行启用了 Swagger CLI 插件的编译：
+
+```powershell
+bun run swagger:compile
 ```
 
 构建并启动编译产物：
