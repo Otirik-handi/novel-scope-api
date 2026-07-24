@@ -1,5 +1,4 @@
 import type { Prisma } from "@prisma/client";
-import type { RankType } from "../../crawlers/interfaces";
 
 export type RankingSnapshot = Prisma.RankingSnapshotGetPayload<{
   include: { items: true };
@@ -7,12 +6,14 @@ export type RankingSnapshot = Prisma.RankingSnapshotGetPayload<{
 
 export type RankingRefreshResult =
   | {
-      rankType: RankType;
+      rankTypeKey: string;
+      rankType: string;
       success: true;
       snapshot: RankingSnapshot;
     }
   | {
-      rankType: RankType;
+      rankTypeKey: string;
+      rankType: string;
       success: false;
-      error: string;
+      error: "RANKING_REFRESH_FAILED";
     };

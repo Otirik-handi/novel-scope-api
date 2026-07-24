@@ -36,15 +36,16 @@ model BookDetail {
 }
 
 model RankingSnapshot {
-  id        String        @id @default(uuid()) @db.Uuid
-  platform  String
-  rankType  String
-  sourceUrl String
-  fetchedAt DateTime      @db.Timestamptz(3)
-  createdAt DateTime      @default(now()) @db.Timestamptz(3)
-  items     RankingItem[]
+  id          String        @id @default(uuid()) @db.Uuid
+  platform    String
+  rankTypeKey String
+  rankType    String
+  sourceUrl   String
+  fetchedAt   DateTime      @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @db.Timestamptz(3)
+  items       RankingItem[]
 
-  @@index([platform, rankType, fetchedAt(sort: Desc)])
+  @@index([platform, rankTypeKey, fetchedAt(sort: Desc)])
 }
 
 model RankingItem {

@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   BadGatewayException,
   Controller,
   Get,
+  Logger,
   Param,
   Post,
 } from "@nestjs/common";
@@ -15,21 +17,34 @@ import { RankingsService } from "./rankings.service";
 
 @Controller("v1/rankings")
 export class RankingsController {
+  private readonly logger = new Logger(RankingsController.name);
+
   constructor(private readonly rankingsService: RankingsService) {}
 
-  @Get(":platform/:rankType")
+  @Get(":platform/:rankTypeKey")
   getLatest(@Param() params: RankingParamsDto): Promise<RankingSnapshot> {
-    return this.rankingsService.getLatest(params.platform, params.rankType);
+    return this.rankingsService.getLatest(
+      params.platform,
+      params.rankTypeKey,
+    );
   }
 
-  @Post(":platform/:rankType/refresh")
+  @Post(":platform/:rankTypeKey/refresh")
   async refresh(@Param() params: RankingParamsDto): Promise<RankingSnapshot> {
     try {
       return await this.rankingsService.refresh(
         params.platform,
-        params.rankType,
+        params.rankTypeKey,
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      this.logger.error(
+        `Failed to refresh ranking ${params.platform}/${params.rankTypeKey}: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw new BadGatewayException("Failed to refresh ranking");
     }
   }

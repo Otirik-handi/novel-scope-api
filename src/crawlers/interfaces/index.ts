@@ -7,7 +7,6 @@ export type {
   RankingCatalog,
   RankingDefinition,
 } from "./ranking-catalog.interface";
-export { RANK_TYPES, type RankType } from "./rank-type";
 export type {
   CrawledRanking,
   CrawledRankingItem,
