@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from "node:path";
 import { CronTime } from "cron";
 
 export const environmentDefaults = {
@@ -8,6 +9,9 @@ export const environmentDefaults = {
   RANKING_REFRESH_CRON: "0 0 6 * * *",
   FANQIE_RANKING_REFRESH_CRON: "0 30 0 * * *",
   RANKING_REFRESH_TIME_ZONE: "Asia/Shanghai",
+  TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS: 10_000,
+  TOMATO_DOWNLOAD_POLL_INTERVAL_MS: 1_000,
+  TOMATO_DOWNLOAD_TASK_TIMEOUT_MS: 7_200_000,
 } as const;
 
 export interface AppEnvironmentVariables {
@@ -28,10 +32,20 @@ export interface CrawlerEnvironmentVariables {
   FANQIE_REQUEST_TIMEOUT_MS: number;
 }
 
+export interface DownloadEnvironmentVariables {
+  TOMATO_DOWNLOADER_BASE_URL: string;
+  TOMATO_DOWNLOADER_PASSWORD: string | null;
+  DOWNLOAD_ARTIFACT_DIR: string;
+  TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS: number;
+  TOMATO_DOWNLOAD_POLL_INTERVAL_MS: number;
+  TOMATO_DOWNLOAD_TASK_TIMEOUT_MS: number;
+}
+
 export interface EnvironmentVariables
   extends AppEnvironmentVariables,
     DatabaseEnvironmentVariables,
-    CrawlerEnvironmentVariables {}
+    CrawlerEnvironmentVariables,
+    DownloadEnvironmentVariables {}
 
 function requireNonEmptyString(
   environment: Record<string, unknown>,
@@ -62,6 +76,19 @@ function readOptionalString(
   }
 
   return value.trim();
+}
+
+function readOptionalNullableString(
+  environment: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = environment[key];
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new Error(`${key} must be a string`);
+  }
+  const normalized = value.trim();
+  return normalized.length === 0 ? null : normalized;
 }
 
 function readPositiveInteger(
@@ -184,12 +211,74 @@ export function validateCrawlerEnvironment(
   };
 }
 
+export function validateDownloadEnvironment(
+  environment: Record<string, unknown>,
+): DownloadEnvironmentVariables {
+  const rawBaseUrl = requireNonEmptyString(
+    environment,
+    "TOMATO_DOWNLOADER_BASE_URL",
+  );
+  let baseUrl: URL;
+  try {
+    baseUrl = new URL(rawBaseUrl);
+  } catch {
+    throw new Error(
+      "TOMATO_DOWNLOADER_BASE_URL must be a safe HTTP URL",
+    );
+  }
+  if (
+    !["http:", "https:"].includes(baseUrl.protocol) ||
+    baseUrl.username.length > 0 ||
+    baseUrl.password.length > 0
+  ) {
+    throw new Error(
+      "TOMATO_DOWNLOADER_BASE_URL must be a safe HTTP URL",
+    );
+  }
+  baseUrl.pathname = baseUrl.pathname.replace(/\/+$/, "");
+  const artifactDirectory = requireNonEmptyString(
+    environment,
+    "DOWNLOAD_ARTIFACT_DIR",
+  );
+  if (!isAbsolute(artifactDirectory)) {
+    throw new Error("DOWNLOAD_ARTIFACT_DIR must be an absolute path");
+  }
+
+  return {
+    TOMATO_DOWNLOADER_BASE_URL: baseUrl.href.replace(/\/$/, ""),
+    TOMATO_DOWNLOADER_PASSWORD: readOptionalNullableString(
+      environment,
+      "TOMATO_DOWNLOADER_PASSWORD",
+    ),
+    DOWNLOAD_ARTIFACT_DIR: resolve(artifactDirectory),
+    TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS: readPositiveInteger(
+      environment,
+      "TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS",
+      environmentDefaults.TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS,
+      2_147_483_647,
+    ),
+    TOMATO_DOWNLOAD_POLL_INTERVAL_MS: readPositiveInteger(
+      environment,
+      "TOMATO_DOWNLOAD_POLL_INTERVAL_MS",
+      environmentDefaults.TOMATO_DOWNLOAD_POLL_INTERVAL_MS,
+      2_147_483_647,
+    ),
+    TOMATO_DOWNLOAD_TASK_TIMEOUT_MS: readPositiveInteger(
+      environment,
+      "TOMATO_DOWNLOAD_TASK_TIMEOUT_MS",
+      environmentDefaults.TOMATO_DOWNLOAD_TASK_TIMEOUT_MS,
+      2_147_483_647,
+    ),
+  };
+}
+
 export function validateEnvironment(
   environment: Record<string, unknown>,
 ): EnvironmentVariables {
   return {
     ...validateDatabaseEnvironment(environment),
     ...validateCrawlerEnvironment(environment),
+    ...validateDownloadEnvironment(environment),
     ...validateAppEnvironment(environment),
   };
 }

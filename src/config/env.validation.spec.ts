@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { ConfigService } from "@nestjs/config";
 import { Test, type TestingModule } from "@nestjs/testing";
 import appConfig from "./app.config";
@@ -8,6 +9,8 @@ import { validateEnvironment } from "./env.validation";
 const requiredEnvironment = {
   DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/novel_scope",
   QIDIAN_USER_AGENT: "NovelScope/0.1",
+  TOMATO_DOWNLOADER_BASE_URL: "http://127.0.0.1:18423",
+  DOWNLOAD_ARTIFACT_DIR: "C:/NovelScope/downloads",
 };
 
 const configurationEnvironmentKeys = [
@@ -20,6 +23,12 @@ const configurationEnvironmentKeys = [
   "RANKING_REFRESH_CRON",
   "FANQIE_RANKING_REFRESH_CRON",
   "RANKING_REFRESH_TIME_ZONE",
+  "TOMATO_DOWNLOADER_BASE_URL",
+  "TOMATO_DOWNLOADER_PASSWORD",
+  "DOWNLOAD_ARTIFACT_DIR",
+  "TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS",
+  "TOMATO_DOWNLOAD_POLL_INTERVAL_MS",
+  "TOMATO_DOWNLOAD_TASK_TIMEOUT_MS",
   "NODE_ENV",
 ] as const;
 
@@ -140,6 +149,11 @@ describe("validateEnvironment", () => {
       RANKING_REFRESH_CRON: "0 0 6 * * *",
       FANQIE_RANKING_REFRESH_CRON: "0 30 0 * * *",
       RANKING_REFRESH_TIME_ZONE: "Asia/Shanghai",
+      TOMATO_DOWNLOADER_PASSWORD: null,
+      TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS: 10_000,
+      TOMATO_DOWNLOAD_POLL_INTERVAL_MS: 1_000,
+      TOMATO_DOWNLOAD_TASK_TIMEOUT_MS: 7_200_000,
+      DOWNLOAD_ARTIFACT_DIR: resolve("C:/NovelScope/downloads"),
     });
   });
 
@@ -247,6 +261,12 @@ describe("validateEnvironment", () => {
       "RANKING_REFRESH_CRON",
       "FANQIE_RANKING_REFRESH_CRON",
       "RANKING_REFRESH_TIME_ZONE",
+      "TOMATO_DOWNLOADER_BASE_URL",
+      "TOMATO_DOWNLOADER_PASSWORD",
+      "DOWNLOAD_ARTIFACT_DIR",
+      "TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS",
+      "TOMATO_DOWNLOAD_POLL_INTERVAL_MS",
+      "TOMATO_DOWNLOAD_TASK_TIMEOUT_MS",
     ] as const;
     const originalEnvironment = Object.fromEntries(
       environmentKeys.map((key) => [key, process.env[key]]),
@@ -258,6 +278,12 @@ describe("validateEnvironment", () => {
     process.env.PORT = "3100";
     process.env.QIDIAN_REQUEST_TIMEOUT_MS = "15000";
     process.env.FANQIE_REQUEST_TIMEOUT_MS = "25000";
+    process.env.TOMATO_DOWNLOADER_BASE_URL = "http://127.0.0.1:18423/";
+    process.env.TOMATO_DOWNLOADER_PASSWORD = " secret ";
+    process.env.DOWNLOAD_ARTIFACT_DIR = "C:/NovelScope/downloads";
+    delete process.env.TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS;
+    delete process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS;
+    delete process.env.TOMATO_DOWNLOAD_TASK_TIMEOUT_MS;
     delete process.env.BOOK_DETAIL_TTL_HOURS;
     delete process.env.RANKING_REFRESH_CRON;
     delete process.env.FANQIE_RANKING_REFRESH_CRON;
@@ -292,6 +318,14 @@ describe("validateEnvironment", () => {
         rankingRefreshTimeZone: configService.get(
           "app.rankingRefreshTimeZone",
         ),
+        downloaderBaseUrl: configService.get("download.baseUrl"),
+        downloaderPassword: configService.get("download.password"),
+        artifactDirectory: configService.get("download.artifactDirectory"),
+        downloaderRequestTimeoutMs: configService.get(
+          "download.requestTimeoutMs",
+        ),
+        downloadPollIntervalMs: configService.get("download.pollIntervalMs"),
+        downloadTaskTimeoutMs: configService.get("download.taskTimeoutMs"),
       }).toEqual({
         databaseUrl:
           "postgresql://postgres:postgres@localhost:5432/novel_scope",
@@ -303,6 +337,12 @@ describe("validateEnvironment", () => {
         qidianRankingRefreshCron: "0 0 6 * * *",
         fanqieRankingRefreshCron: "0 30 0 * * *",
         rankingRefreshTimeZone: "Asia/Shanghai",
+        downloaderBaseUrl: "http://127.0.0.1:18423",
+        downloaderPassword: "secret",
+        artifactDirectory: resolve("C:/NovelScope/downloads"),
+        downloaderRequestTimeoutMs: 10_000,
+        downloadPollIntervalMs: 1_000,
+        downloadTaskTimeoutMs: 7_200_000,
       });
     } finally {
       await moduleReference?.close();

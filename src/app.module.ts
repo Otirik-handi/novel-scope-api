@@ -4,6 +4,7 @@ import { BooksModule } from "./books/books.module";
 import appConfig from "./config/app.config";
 import crawlerConfig from "./config/crawler.config";
 import databaseConfig from "./config/database.config";
+import downloadConfig from "./config/download.config";
 import { validateEnvironment } from "./config/env.validation";
 import { RankingsModule } from "./rankings/rankings.module";
 import { DatabaseModule } from "./shared/database/database.module";
@@ -12,7 +13,7 @@ import { DatabaseModule } from "./shared/database/database.module";
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, crawlerConfig],
+      load: [appConfig, databaseConfig, crawlerConfig, downloadConfig],
       validate: validateEnvironment,
     }),
     DatabaseModule,
