@@ -146,6 +146,10 @@ export class DownloadsWorker
         this.activeTaskId = null;
         return;
       }
+      if (!isActiveDownload(task)) {
+        this.activeTaskId = null;
+        return;
+      }
     }
 
     if (this.hasTimedOut(task)) {
@@ -159,26 +163,17 @@ export class DownloadsWorker
           ? await this.reconcileUncertainCreate(task)
           : null;
       if (downstream === null) {
-        try {
-          this.uncertainCreateAfterMs = this.clock.now().getTime() - 5_000;
-          downstream = await this.client.createJob(
-            task.book.externalBookId,
-            task.startChapter === null || task.endChapter === null
-              ? null
-              : {
-                  startChapter: task.startChapter,
-                  endChapter: task.endChapter,
-                },
-          );
-        } catch (error) {
-          if (
-            error instanceof TomatoDownloaderClientError &&
-            error.code === "UNAVAILABLE"
-          ) {
-            this.uncertainCreateTaskId = task.id;
-          }
-          throw error;
-        }
+        this.uncertainCreateTaskId = task.id;
+        this.uncertainCreateAfterMs = this.clock.now().getTime() - 5_000;
+        downstream = await this.client.createJob(
+          task.book.externalBookId,
+          task.startChapter === null || task.endChapter === null
+            ? null
+            : {
+                startChapter: task.startChapter,
+                endChapter: task.endChapter,
+              },
+        );
       }
       const updated = await this.repository.setDownstreamJobId(
         task.id,
@@ -318,7 +313,7 @@ export class DownloadsWorker
       return;
     }
     let signal: AbortSignal | null = null;
-    let storedPath: string | null = null;
+    let stored: Awaited<ReturnType<ArtifactStore["store"]>> | null = null;
     try {
       signal = this.createTaskSignal(task);
       const item = await this.findArtifact(job.title, task, signal);
@@ -327,22 +322,13 @@ export class DownloadsWorker
         return;
       }
       const source = await this.client.openArtifact(item.relativePath, signal);
-      const stored = await this.artifacts.store(
+      stored = await this.artifacts.store(
         task.id,
         source.stream,
         source.contentType,
         signal,
       );
-      storedPath = stored.relativePath;
       this.assertWithinDeadline(task);
-      await this.repository.succeed(task.id, {
-        artifactPath: stored.relativePath,
-        filename: displayFilename(job.title, task),
-        sizeBytes: stored.sizeBytes,
-        sha256: stored.sha256,
-        finishedAt: this.clock.now(),
-      });
-      this.activeTaskId = null;
     } catch (error) {
       if (this.stopping || error instanceof DownloadsWorkerStoppingError) {
         throw new DownloadsWorkerStoppingError();
@@ -352,12 +338,14 @@ export class DownloadsWorker
         signal?.aborted ||
         this.hasTimedOut(task)
       ) {
-        if (storedPath !== null) {
-          await this.artifacts.delete(storedPath).catch(() => undefined);
+        if (stored !== null) {
+          await this.artifacts.delete(stored.relativePath).catch(() => undefined);
         }
         await this.timeout(task);
         return;
       }
+      const unavailable = findUnavailableError(error);
+      if (unavailable !== null) throw unavailable;
       const code =
         typeof error === "object" &&
         error !== null &&
@@ -367,7 +355,54 @@ export class DownloadsWorker
           ? (error.code as keyof typeof FAILURE_MESSAGES)
           : "ARTIFACT_STORE_FAILED";
       await this.fail(task, code);
+      return;
     }
+
+    await this.publishArtifact(task, job.title, stored);
+  }
+
+  private async publishArtifact(
+    task: StoredBookDownload,
+    title: string,
+    stored: Awaited<ReturnType<ArtifactStore["store"]>>,
+  ): Promise<void> {
+    let published: StoredBookDownload | null;
+    try {
+      published = await this.repository.succeed(task.id, {
+        artifactPath: stored.relativePath,
+        filename: displayFilename(title, task),
+        sizeBytes: stored.sizeBytes,
+        sha256: stored.sha256,
+        finishedAt: this.clock.now(),
+      });
+    } catch (error) {
+      let current: StoredBookDownload | null;
+      try {
+        current = await this.repository.findById(task.id);
+      } catch {
+        throw error;
+      }
+      if (isPublishedArtifact(current, stored)) {
+        this.activeTaskId = null;
+        return;
+      }
+      await this.artifacts.delete(stored.relativePath);
+      if (!isActiveDownload(current)) this.activeTaskId = null;
+      throw error;
+    }
+
+    if (published !== null) {
+      this.activeTaskId = null;
+      return;
+    }
+
+    const current = await this.repository.findById(task.id);
+    if (isPublishedArtifact(current, stored)) {
+      this.activeTaskId = null;
+      return;
+    }
+    await this.artifacts.delete(stored.relativePath);
+    if (!isActiveDownload(current)) this.activeTaskId = null;
   }
 
   private async findArtifact(
@@ -390,6 +425,7 @@ export class DownloadsWorker
     const candidates = scan.items.filter(
       (item) =>
         item.kind === "file" &&
+        !/[\\/]/.test(item.relativePath) &&
         item.extension.toLowerCase() === "txt" &&
         item.name === expected &&
         item.modifiedAtMs !== null &&
@@ -465,6 +501,44 @@ export class DownloadsWorker
       return false;
     }
   }
+}
+
+function findUnavailableError(
+  error: unknown,
+): TomatoDownloaderClientError | null {
+  const seen = new Set<unknown>();
+  let current = error;
+  while (typeof current === "object" && current !== null && !seen.has(current)) {
+    if (
+      current instanceof TomatoDownloaderClientError &&
+      current.code === "UNAVAILABLE"
+    ) {
+      return current;
+    }
+    seen.add(current);
+    current = "cause" in current ? current.cause : null;
+  }
+  return null;
+}
+
+function isActiveDownload(task: StoredBookDownload | null): boolean {
+  return (
+    task !== null &&
+    (task.status === BookDownloadStatus.RUNNING ||
+      task.status === BookDownloadStatus.CANCELING)
+  );
+}
+
+function isPublishedArtifact(
+  task: StoredBookDownload | null,
+  stored: Awaited<ReturnType<ArtifactStore["store"]>>,
+): boolean {
+  return (
+    task?.status === BookDownloadStatus.SUCCEEDED &&
+    task.artifactPath === stored.relativePath &&
+    task.artifactSizeBytes === stored.sizeBytes &&
+    task.artifactSha256 === stored.sha256
+  );
 }
 
 function displayFilename(title: string, task: StoredBookDownload): string {

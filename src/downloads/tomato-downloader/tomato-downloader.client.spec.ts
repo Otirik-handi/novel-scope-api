@@ -1,4 +1,4 @@
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import {
   AxiosError,
   type AxiosAdapter,
@@ -191,6 +191,28 @@ describe("TomatoDownloaderClient", () => {
     const artifact = await createClient(adapter).openArtifact("测试小说.txt");
     expect(artifact.contentType).toBe("text/plain; charset=utf-8");
     expect(artifact.stream).toBeInstanceOf(Readable);
+  });
+
+  it("normalizes an artifact stream transport failure after the response opens", async () => {
+    const source = new PassThrough();
+    const { adapter } = createAdapter((config) =>
+      response(config, source, 200, {
+        "content-type": "text/plain; charset=utf-8",
+      }),
+    );
+    const artifact = await createClient(adapter).openArtifact("book.txt");
+    const streamError = new Promise<unknown>((resolve) => {
+      artifact.stream.once("error", resolve);
+      artifact.stream.resume();
+    });
+
+    source.destroy(new Error("read ECONNRESET"));
+
+    await expect(streamError).resolves.toMatchObject({
+      name: "TomatoDownloaderClientError",
+      code: "UNAVAILABLE",
+      message: "Downloader is unavailable",
+    });
   });
 
   it("rejects a JSON endpoint with the wrong Content-Type", async () => {

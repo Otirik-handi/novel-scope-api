@@ -1,6 +1,6 @@
 ﻿import { BookDownloadStatus } from "@prisma/client";
 import { Readable } from "node:stream";
-import type { ArtifactStore } from "./artifact-store";
+import { ArtifactStoreError, type ArtifactStore } from "./artifact-store";
 import type { DownloadsRepository } from "./downloads.repository";
 import {
   DownloadsWorker,
@@ -420,6 +420,322 @@ describe("DownloadsWorker", () => {
     });
   });
 
+  it.each(["library scan", "artifact open", "artifact transfer"])(
+    "keeps the task active when Downloader disconnects during %s",
+    async (stage) => {
+      const running = task({ downstreamJobId: "42" });
+      const doneJob = downstreamJob({ state: "done" });
+      const unavailable = new TomatoDownloaderClientError(
+        "UNAVAILABLE",
+        "Downloader is unavailable",
+      );
+      const fail = jest.fn();
+      const scanLibrary =
+        stage === "library scan"
+          ? jest.fn().mockRejectedValue(unavailable)
+          : jest.fn().mockResolvedValue({
+              running: false,
+              items: [
+                {
+                  kind: "file",
+                  name: "书.txt",
+                  relativePath: "book.txt",
+                  extension: "txt",
+                  sizeBytes: 1,
+                  modifiedAtMs: startedAt.getTime(),
+                },
+              ],
+            });
+      const openArtifact =
+        stage === "artifact open"
+          ? jest.fn().mockRejectedValue(unavailable)
+          : jest.fn().mockResolvedValue({
+              stream: Readable.from(["x"]),
+              contentType: "text/plain",
+            });
+      const store =
+        stage === "artifact transfer"
+          ? jest.fn().mockRejectedValue(
+              new ArtifactStoreError(
+                "ARTIFACT_STORE_FAILED",
+                "Failed to store downloaded artifact",
+                { cause: unavailable },
+              ),
+            )
+          : jest.fn();
+      const { worker } = createSubject({
+        repository: {
+          findRecoverable: jest.fn().mockResolvedValue([running]),
+          findById: jest.fn().mockResolvedValue(running),
+          fail,
+        },
+        client: {
+          listJobs: jest.fn().mockResolvedValue([doneJob]),
+          getJob: jest.fn().mockResolvedValue(doneJob),
+          scanLibrary,
+          openArtifact,
+        },
+        artifacts: { store },
+      });
+
+      await worker.initialize();
+      await expect(worker.processOnce()).rejects.toBe(unavailable);
+
+      expect(fail).not.toHaveBeenCalled();
+    },
+  );
+
+  it("removes an unpublished artifact and retries when success persistence fails", async () => {
+    const running = task({ downstreamJobId: "42" });
+    const doneJob = downstreamJob({ state: "done" });
+    const persistenceError = new Error("database unavailable");
+    const findById = jest
+      .fn()
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(running);
+    const fail = jest.fn();
+    const deleteArtifact = jest.fn().mockResolvedValue(undefined);
+    const { worker } = createSubject({
+      repository: {
+        findRecoverable: jest.fn().mockResolvedValue([running]),
+        findById,
+        succeed: jest.fn().mockRejectedValue(persistenceError),
+        fail,
+      },
+      client: {
+        listJobs: jest.fn().mockResolvedValue([doneJob]),
+        getJob: jest.fn().mockResolvedValue(doneJob),
+        scanLibrary: jest.fn().mockResolvedValue({
+          running: false,
+          items: [
+            {
+              kind: "file",
+              name: "书.txt",
+              relativePath: "book.txt",
+              extension: "txt",
+              sizeBytes: 1,
+              modifiedAtMs: startedAt.getTime(),
+            },
+          ],
+        }),
+        openArtifact: jest.fn().mockResolvedValue({
+          stream: Readable.from(["x"]),
+          contentType: "text/plain",
+        }),
+      },
+      artifacts: {
+        store: jest.fn().mockResolvedValue({
+          relativePath: `${running.id}.txt`,
+          sizeBytes: 1,
+          sha256: "x",
+        }),
+        delete: deleteArtifact,
+      },
+    });
+
+    await worker.initialize();
+    await expect(worker.processOnce()).rejects.toBe(persistenceError);
+
+    expect(findById).toHaveBeenCalledTimes(2);
+    expect(deleteArtifact).toHaveBeenCalledWith(`${running.id}.txt`);
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  it("keeps an artifact when success persistence committed before its response failed", async () => {
+    const running = task({ downstreamJobId: "42" });
+    const doneJob = downstreamJob({ state: "done" });
+    const succeeded = task({
+      status: BookDownloadStatus.SUCCEEDED,
+      downstreamJobId: "42",
+      artifactPath: `${running.id}.txt`,
+      artifactFilename: "书_第20-30章.txt",
+      artifactSizeBytes: 1,
+      artifactSha256: "x",
+      finishedAt: startedAt,
+    });
+    const persistenceError = new Error("database response lost");
+    const findById = jest
+      .fn()
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(succeeded);
+    const fail = jest.fn();
+    const deleteArtifact = jest.fn().mockResolvedValue(undefined);
+    const { worker } = createSubject({
+      repository: {
+        findRecoverable: jest.fn().mockResolvedValue([running]),
+        findById,
+        succeed: jest.fn().mockRejectedValue(persistenceError),
+        fail,
+      },
+      client: {
+        listJobs: jest.fn().mockResolvedValue([doneJob]),
+        getJob: jest.fn().mockResolvedValue(doneJob),
+        scanLibrary: jest.fn().mockResolvedValue({
+          running: false,
+          items: [
+            {
+              kind: "file",
+              name: "书.txt",
+              relativePath: "book.txt",
+              extension: "txt",
+              sizeBytes: 1,
+              modifiedAtMs: startedAt.getTime(),
+            },
+          ],
+        }),
+        openArtifact: jest.fn().mockResolvedValue({
+          stream: Readable.from(["x"]),
+          contentType: "text/plain",
+        }),
+      },
+      artifacts: {
+        store: jest.fn().mockResolvedValue({
+          relativePath: `${running.id}.txt`,
+          sizeBytes: 1,
+          sha256: "x",
+        }),
+        delete: deleteArtifact,
+      },
+    });
+
+    await worker.initialize();
+    await expect(worker.processOnce()).resolves.toBeUndefined();
+
+    expect(findById).toHaveBeenCalledTimes(2);
+    expect(deleteArtifact).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  it("preserves an ambiguous artifact until a later read confirms publication", async () => {
+    const running = task({ downstreamJobId: "42" });
+    const doneJob = downstreamJob({ state: "done" });
+    const succeeded = task({
+      status: BookDownloadStatus.SUCCEEDED,
+      downstreamJobId: "42",
+      artifactPath: `${running.id}.txt`,
+      artifactFilename: "书_第20-30章.txt",
+      artifactSizeBytes: 1,
+      artifactSha256: "x",
+      finishedAt: startedAt,
+    });
+    const persistenceError = new Error("database response lost");
+    const readbackError = new Error("database still unavailable");
+    const findById = jest
+      .fn()
+      .mockResolvedValueOnce(running)
+      .mockRejectedValueOnce(readbackError)
+      .mockResolvedValueOnce(succeeded);
+    const fail = jest.fn();
+    const deleteArtifact = jest.fn().mockResolvedValue(undefined);
+    const getJob = jest.fn().mockResolvedValue(doneJob);
+    const { worker } = createSubject({
+      repository: {
+        findRecoverable: jest.fn().mockResolvedValue([running]),
+        findById,
+        succeed: jest.fn().mockRejectedValue(persistenceError),
+        fail,
+      },
+      client: {
+        listJobs: jest.fn().mockResolvedValue([doneJob]),
+        getJob,
+        scanLibrary: jest.fn().mockResolvedValue({
+          running: false,
+          items: [
+            {
+              kind: "file",
+              name: "书.txt",
+              relativePath: "book.txt",
+              extension: "txt",
+              sizeBytes: 1,
+              modifiedAtMs: startedAt.getTime(),
+            },
+          ],
+        }),
+        openArtifact: jest.fn().mockResolvedValue({
+          stream: Readable.from(["x"]),
+          contentType: "text/plain",
+        }),
+      },
+      artifacts: {
+        store: jest.fn().mockResolvedValue({
+          relativePath: `${running.id}.txt`,
+          sizeBytes: 1,
+          sha256: "x",
+        }),
+        delete: deleteArtifact,
+      },
+    });
+
+    await worker.initialize();
+    await expect(worker.processOnce()).rejects.toBe(persistenceError);
+    await expect(worker.processOnce()).resolves.toBeUndefined();
+
+    expect(findById).toHaveBeenCalledTimes(3);
+    expect(getJob).toHaveBeenCalledTimes(1);
+    expect(deleteArtifact).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  it("removes an unpublished artifact when the success update loses its state race", async () => {
+    const running = task({ downstreamJobId: "42" });
+    const doneJob = downstreamJob({ state: "done" });
+    const canceled = task({
+      status: BookDownloadStatus.CANCELED,
+      downstreamJobId: "42",
+      finishedAt: startedAt,
+    });
+    const findById = jest
+      .fn()
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(canceled);
+    const fail = jest.fn();
+    const deleteArtifact = jest.fn().mockResolvedValue(undefined);
+    const { worker } = createSubject({
+      repository: {
+        findRecoverable: jest.fn().mockResolvedValue([running]),
+        findById,
+        succeed: jest.fn().mockResolvedValue(null),
+        fail,
+      },
+      client: {
+        listJobs: jest.fn().mockResolvedValue([doneJob]),
+        getJob: jest.fn().mockResolvedValue(doneJob),
+        scanLibrary: jest.fn().mockResolvedValue({
+          running: false,
+          items: [
+            {
+              kind: "file",
+              name: "书.txt",
+              relativePath: "book.txt",
+              extension: "txt",
+              sizeBytes: 1,
+              modifiedAtMs: startedAt.getTime(),
+            },
+          ],
+        }),
+        openArtifact: jest.fn().mockResolvedValue({
+          stream: Readable.from(["x"]),
+          contentType: "text/plain",
+        }),
+      },
+      artifacts: {
+        store: jest.fn().mockResolvedValue({
+          relativePath: `${running.id}.txt`,
+          sizeBytes: 1,
+          sha256: "x",
+        }),
+        delete: deleteArtifact,
+      },
+    });
+
+    await worker.initialize();
+    await expect(worker.processOnce()).resolves.toBeUndefined();
+
+    expect(findById).toHaveBeenCalledTimes(2);
+    expect(deleteArtifact).toHaveBeenCalledWith(`${running.id}.txt`);
+    expect(fail).not.toHaveBeenCalled();
+  });
+
   it("marks a downstream canceled task canceled", async () => {
     const running = task({ downstreamJobId: "42" });
     const markCanceled = jest.fn();
@@ -662,6 +978,40 @@ describe("DownloadsWorker", () => {
     expect(setDownstreamJobId).toHaveBeenCalledWith(running.id, "42");
   });
 
+  it("reconciles an accepted job when persisting its id fails without resubmitting", async () => {
+    const running = task();
+    const withJob = task({ downstreamJobId: "42" });
+    const activeJob = downstreamJob({
+      bookId: running.book.externalBookId,
+      state: "running",
+    });
+    const persistenceError = new Error("database unavailable");
+    const createJob = jest.fn().mockResolvedValue({ id: "42" });
+    const setDownstreamJobId = jest
+      .fn()
+      .mockRejectedValueOnce(persistenceError)
+      .mockResolvedValueOnce(withJob);
+    const { worker } = createSubject({
+      repository: {
+        claimNextQueued: jest.fn().mockResolvedValue(running),
+        findById: jest.fn().mockResolvedValue(running),
+        setDownstreamJobId,
+      },
+      client: {
+        createJob,
+        listJobs: jest.fn().mockResolvedValue([activeJob]),
+        getJob: jest.fn().mockResolvedValue(activeJob),
+      },
+    });
+
+    await expect(worker.processOnce()).rejects.toBe(persistenceError);
+    await worker.processOnce();
+
+    expect(createJob).toHaveBeenCalledTimes(1);
+    expect(setDownstreamJobId).toHaveBeenCalledTimes(2);
+    expect(setDownstreamJobId).toHaveBeenLastCalledWith(running.id, "42");
+  });
+
   it("completes a CANCELING task when the downstream job won the race and finished", async () => {
     const canceling = task({
       status: BookDownloadStatus.CANCELING,
@@ -778,6 +1128,19 @@ describe("DownloadsWorker", () => {
           extension: "txt",
           sizeBytes: 1,
           modifiedAtMs: startedAt.getTime() - 5_001,
+        },
+      ],
+    },
+    {
+      caseName: "only a nested candidate",
+      items: [
+        {
+          kind: "file",
+          name: "书.txt",
+          relativePath: "nested/书.txt",
+          extension: "txt",
+          sizeBytes: 1,
+          modifiedAtMs: startedAt.getTime(),
         },
       ],
     },

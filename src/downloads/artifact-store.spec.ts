@@ -84,6 +84,20 @@ describe("ArtifactStore", () => {
     await expect(stat(join(root, "44444444-4444-4444-8444-444444444444.part"))).rejects.toThrow();
   });
 
+  it.each([
+    Buffer.from([0xc3, 0x28]),
+    Buffer.from([0xe4, 0xb8]),
+  ])("rejects malformed UTF-8 and removes partial output", async (content) => {
+    const { root, store } = await createStore();
+    const taskId = "77777777-7777-4777-8777-777777777777";
+
+    await expect(
+      store.store(taskId, Readable.from([content]), "text/plain; charset=utf-8"),
+    ).rejects.toMatchObject({ code: "ARTIFACT_INVALID" });
+    await expect(stat(join(root, `${taskId}.part`))).rejects.toThrow();
+    await expect(stat(join(root, `${taskId}.txt`))).rejects.toThrow();
+  });
+
   it("aborts an in-flight transfer and removes its partial file", async () => {
     const { root, store } = await createStore();
     const source = new PassThrough();

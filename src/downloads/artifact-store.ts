@@ -10,6 +10,7 @@ import {
 import { basename, join, resolve } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { TextDecoder } from "node:util";
 
 export type ArtifactStoreErrorCode =
   | "ARTIFACT_NOT_FOUND"
@@ -87,6 +88,7 @@ export class ArtifactStore {
     await rm(partialPath, { force: true });
 
     const hash = createHash("sha256");
+    const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
     let sizeBytes = 0;
     const prefixChunks: Buffer[] = [];
     let prefixBytes = 0;
@@ -112,6 +114,17 @@ export class ArtifactStore {
           );
           return;
         }
+        try {
+          utf8Decoder.decode(buffer, { stream: true });
+        } catch {
+          callback(
+            new ArtifactStoreError(
+              "ARTIFACT_INVALID",
+              "Downloaded artifact is not valid UTF-8 text",
+            ),
+          );
+          return;
+        }
         hash.update(buffer);
         if (prefixBytes < 4096) {
           const slice = buffer.subarray(0, 4096 - prefixBytes);
@@ -121,6 +134,17 @@ export class ArtifactStore {
         callback(null, buffer);
       },
       flush: (callback) => {
+        try {
+          utf8Decoder.decode();
+        } catch {
+          callback(
+            new ArtifactStoreError(
+              "ARTIFACT_INVALID",
+              "Downloaded artifact is not valid UTF-8 text",
+            ),
+          );
+          return;
+        }
         const prefix = Buffer.concat(prefixChunks).toString("utf8").trimStart();
         const normalizedContentType = contentType.toLowerCase();
         const invalidType = !normalizedContentType.startsWith("text/plain");

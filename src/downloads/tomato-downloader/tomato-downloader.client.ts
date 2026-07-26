@@ -1,4 +1,4 @@
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import axios, {
   type AxiosAdapter,
   type AxiosInstance,
@@ -166,7 +166,20 @@ export class TomatoDownloaderClient {
           "Downloader returned an artifact without Content-Type",
         );
       }
-      return { stream: response.data, contentType };
+      const stream = new PassThrough();
+      response.data.once("error", (error: unknown) => {
+        stream.destroy(
+          error instanceof TomatoDownloaderClientError
+            ? error
+            : new TomatoDownloaderClientError(
+                "UNAVAILABLE",
+                "Downloader is unavailable",
+              ),
+        );
+      });
+      stream.once("close", () => response.data.destroy());
+      response.data.pipe(stream);
+      return { stream, contentType };
     } catch (error) {
       throw this.normalizeError(error);
     }
