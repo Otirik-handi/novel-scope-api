@@ -2,6 +2,8 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { assertDatabaseIsolation } from "../scripts/database-isolation.cjs";
 import type { CrawlersService } from "../src/crawlers/crawlers.service";
+import { DownloadsWorker } from "../src/downloads/downloads.worker";
+import { TomatoDownloaderClient } from "../src/downloads/tomato-downloader/tomato-downloader.client";
 import { createE2eApplication } from "./setup-env";
 
 jest.mock("@nestjs/testing", () => ({
@@ -155,13 +157,45 @@ describe("createE2eApplication lifecycle", () => {
     expect(process.env.TOMATO_DOWNLOADER_PASSWORD).toBeUndefined();
     expect(process.env.DOWNLOAD_ARTIFACT_DIR).toContain("novel-scope-e2e-artifacts-");
     expect(process.env.TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS).toBe("10000");
-    expect(process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS).toBe("1000");
+    expect(process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS).toBe("60000");
     expect(process.env.TOMATO_DOWNLOAD_TASK_TIMEOUT_MS).toBe("7200000");
 
     await Promise.all([context.close(), context.close()]);
 
     expect(app.close).toHaveBeenCalledTimes(1);
     expectOriginalEnvironment();
+  });
+
+  it("keeps the real worker when a fake Downloader client is provided", async () => {
+    const fakeClient = {} as TomatoDownloaderClient;
+
+    const context = await createE2eApplication(crawlersService, {
+      tomatoDownloaderClient: fakeClient,
+    });
+
+    const builder = jest.mocked(Test.createTestingModule).mock.results[0]!
+      .value as unknown as {
+      overrideProvider: jest.Mock;
+      useValue: jest.Mock;
+    };
+    expect(builder.overrideProvider).toHaveBeenCalledWith(
+      TomatoDownloaderClient,
+    );
+    expect(builder.useValue).toHaveBeenCalledWith(fakeClient);
+    expect(builder.overrideProvider).not.toHaveBeenCalledWith(DownloadsWorker);
+    await context.close();
+  });
+
+  it("disables the download worker by default for unrelated E2E suites", async () => {
+    const context = await createE2eApplication(crawlersService);
+
+    const builder = jest.mocked(Test.createTestingModule).mock.results[0]!
+      .value as unknown as { overrideProvider: jest.Mock };
+    expect(builder.overrideProvider).toHaveBeenCalledWith(DownloadsWorker);
+    expect(builder.overrideProvider).not.toHaveBeenCalledWith(
+      TomatoDownloaderClient,
+    );
+    await context.close();
   });
 
   it("restores the environment when successful-context close fails", async () => {

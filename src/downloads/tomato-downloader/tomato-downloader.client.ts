@@ -123,10 +123,15 @@ export class TomatoDownloaderClient {
     );
   }
 
-  async scanLibrary(start: boolean): Promise<DownloaderLibraryScan> {
+  async scanLibrary(
+    start: boolean,
+    signal?: AbortSignal,
+  ): Promise<DownloaderLibraryScan> {
     const data = await this.requestJson(
       "get",
       `/api/library?start=${start ? "true" : "false"}`,
+      undefined,
+      signal,
     );
     return {
       running: requiredBoolean(data, "running"),
@@ -134,13 +139,17 @@ export class TomatoDownloaderClient {
     };
   }
 
-  async openArtifact(relativePath: string): Promise<ArtifactResponse> {
+  async openArtifact(
+    relativePath: string,
+    signal?: AbortSignal,
+  ): Promise<ArtifactResponse> {
     const encodedPath = encodeRelativePath(relativePath);
     try {
       const response = await this.http.get<Readable>(`/download/${encodedPath}`, {
         headers: this.headers(),
         maxRedirects: 0,
         responseType: "stream",
+        signal,
         timeout: this.options.requestTimeoutMs,
       });
       if (!(response.data instanceof Readable)) {
@@ -167,6 +176,7 @@ export class TomatoDownloaderClient {
     method: "get" | "post",
     url: string,
     data?: unknown,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     try {
       const response = await this.http.request<unknown>({
@@ -174,6 +184,7 @@ export class TomatoDownloaderClient {
         headers: this.headers(),
         maxRedirects: 0,
         method,
+        signal,
         timeout: this.options.requestTimeoutMs,
         url,
       });

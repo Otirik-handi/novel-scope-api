@@ -45,7 +45,8 @@ export const DOWNLOADS_SLEEPER = Symbol("DOWNLOADS_SLEEPER");
     {
       provide: DOWNLOADS_SLEEPER,
       useValue: {
-        sleep: (milliseconds: number) => sleep(milliseconds),
+        sleep: (milliseconds: number, signal?: AbortSignal) =>
+          sleep(milliseconds, undefined, { signal }),
       } satisfies DownloadsWorkerSleeper,
     },
     {

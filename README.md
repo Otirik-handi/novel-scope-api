@@ -204,4 +204,3 @@ npx tsc --noEmit --incremental false
 - 遇到验证码、登录墙或明确访问限制时立即失败，不尝试绕过。
 - Playwright 使用 `waitUntil: "load"` 等待页面就绪，避免 `networkidle` 因 WebSocket 长连接无限等待。
 - 客户端不做自动重试。错误详情记录在服务端日志中。
-

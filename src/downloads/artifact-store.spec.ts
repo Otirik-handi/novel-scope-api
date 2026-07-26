@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import {
   ArtifactStore,
   ArtifactStoreError,
@@ -82,6 +82,22 @@ describe("ArtifactStore", () => {
       ),
     ).rejects.toBeInstanceOf(ArtifactStoreError);
     await expect(stat(join(root, "44444444-4444-4444-8444-444444444444.part"))).rejects.toThrow();
+  });
+
+  it("aborts an in-flight transfer and removes its partial file", async () => {
+    const { root, store } = await createStore();
+    const source = new PassThrough();
+    const controller = new AbortController();
+    const taskId = "66666666-6666-4666-8666-666666666666";
+    const storing = store.store(taskId, source, "text/plain", controller.signal);
+    source.write("partial");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    controller.abort();
+
+    await expect(storing).rejects.toMatchObject({ code: "ARTIFACT_STORE_FAILED" });
+    await expect(stat(join(root, `${taskId}.part`))).rejects.toThrow();
+    await expect(stat(join(root, `${taskId}.txt`))).rejects.toThrow();
   });
 
   it("opens and idempotently deletes only UUID TXT artifacts", async () => {

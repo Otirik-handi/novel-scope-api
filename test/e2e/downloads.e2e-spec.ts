@@ -4,6 +4,8 @@ import { join } from "node:path";
 import request from "supertest";
 import type { CrawlersService } from "../../src/crawlers/crawlers.service";
 import { DownloadsRepository } from "../../src/downloads/downloads.repository";
+import type { TomatoDownloaderClient } from "../../src/downloads/tomato-downloader/tomato-downloader.client";
+import type { DownloaderJob } from "../../src/downloads/tomato-downloader/tomato-downloader.contract";
 import { createE2eApplication, type E2eApplication } from "../setup-env";
 
 const crawlersService: Pick<
@@ -21,17 +23,74 @@ const crawlersService: Pick<
   },
 };
 
+function createDownloaderFake() {
+  let jobs: DownloaderJob[] = [];
+  const unexpected = () => {
+    throw new Error("Unexpected Downloader access in downloads E2E");
+  };
+  const client = {
+    getStatus: jest.fn().mockResolvedValue({
+      version: "2.4.13",
+      locked: false,
+      saveDirectory: "test",
+    }),
+    getConfig: jest.fn().mockResolvedValue({
+      useOfficialApi: true,
+      novelFormat: "txt",
+      bulkFiles: false,
+      enableSegmentComments: false,
+      enableAudiobook: false,
+      autoOpenDownloadedFiles: false,
+      askFormatAfterDownload: false,
+      preferredBookNameField: "book_name",
+      allowOverwriteFiles: true,
+    }),
+    listJobs: jest.fn(async () => jobs),
+    getJob: jest.fn(async (jobId: string) =>
+      jobs.find((job) => job.id === jobId) ?? null,
+    ),
+    createJob: jest.fn(unexpected),
+    cancelJob: jest.fn(unexpected),
+    scanLibrary: jest.fn(unexpected),
+    openArtifact: jest.fn(unexpected),
+  };
+  return {
+    client: client as unknown as TomatoDownloaderClient,
+    unexpectedCalls: [
+      client.createJob,
+      client.cancelJob,
+      client.scanLibrary,
+      client.openArtifact,
+    ],
+    setJobs(value: DownloaderJob[]) {
+      jobs = value;
+    },
+  };
+}
+
 describe("Downloads API (e2e)", () => {
   let context: E2eApplication | undefined;
   let repository: DownloadsRepository;
+  const downloader = createDownloaderFake();
 
   beforeAll(async () => {
-    context = await createE2eApplication(crawlersService);
+    context = await createE2eApplication(crawlersService, {
+      tomatoDownloaderClient: downloader.client,
+    });
     repository = context.app.get(DownloadsRepository);
   });
 
-  beforeEach(clean);
-  afterEach(clean);
+  beforeEach(async () => {
+    downloader.setJobs([]);
+    for (const call of downloader.unexpectedCalls) call.mockClear();
+    await clean();
+  });
+  afterEach(async () => {
+    await clean();
+    for (const call of downloader.unexpectedCalls) {
+      expect(call).not.toHaveBeenCalled();
+    }
+  });
   afterAll(async () => context?.close());
 
   function requireContext(): E2eApplication {
@@ -49,6 +108,55 @@ describe("Downloads API (e2e)", () => {
         force: true,
       });
     }
+  }
+
+  async function restartApplication(): Promise<void> {
+    await requireContext().close();
+    context = await createE2eApplication(crawlersService, {
+      tomatoDownloaderClient: downloader.client,
+    });
+    repository = context.app.get(DownloadsRepository);
+  }
+
+  async function seedRunningTask(downstreamJobId: string) {
+    const book = await requireContext().prisma.book.upsert({
+      where: {
+        platform_externalBookId: {
+          platform: "fanqie",
+          externalBookId: "7069948840148732967",
+        },
+      },
+      create: {
+        platform: "fanqie",
+        externalBookId: "7069948840148732967",
+      },
+      update: {},
+    });
+    return requireContext().prisma.bookDownload.create({
+      data: {
+        bookId: book.id,
+        status: BookDownloadStatus.RUNNING,
+        downstreamJobId,
+        startedAt: new Date(),
+      },
+    });
+  }
+
+  async function waitForProgress(id: string): Promise<void> {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const stored = await requireContext().prisma.bookDownload.findUnique({
+        where: { id },
+      });
+      if (
+        typeof stored?.progress === "object" &&
+        stored.progress !== null &&
+        "savedChapters" in stored.progress
+      ) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error("Worker did not reconnect to the downstream job");
   }
 
   async function createDownload(body: Record<string, unknown> = {}) {
@@ -70,6 +178,53 @@ describe("Downloads API (e2e)", () => {
     expect(claimed?.id).toBe(first.id);
     await expect(repository.findById(second.id)).resolves.toMatchObject({
       status: BookDownloadStatus.QUEUED,
+    });
+  });
+
+  it("reconnects a persisted RUNNING task to its existing job after restart", async () => {
+    const running = await seedRunningTask("42");
+    downloader.setJobs([
+      {
+        id: "42",
+        bookId: "7069948840148732967",
+        title: "书",
+        author: null,
+        state: "running",
+        message: null,
+        progress: {
+          chapterTotal: 2,
+          savedChapters: 1,
+          groupTotal: 1,
+          groupDone: 0,
+          savePhase: "x",
+        },
+        createdAtMs: Date.now(),
+        updatedAtMs: Date.now(),
+      },
+    ]);
+
+    await restartApplication();
+    await waitForProgress(running.id);
+
+    await expect(repository.findById(running.id)).resolves.toMatchObject({
+      status: BookDownloadStatus.RUNNING,
+      downstreamJobId: "42",
+      progress: { savedChapters: 1 },
+    });
+    expect(
+      (downloader.client as unknown as { getJob: jest.Mock }).getJob,
+    ).toHaveBeenCalledWith("42");
+  });
+
+  it("marks a RUNNING task failed when its persisted job is missing after restart", async () => {
+    const running = await seedRunningTask("missing");
+
+    await restartApplication();
+
+    await expect(repository.findById(running.id)).resolves.toMatchObject({
+      status: BookDownloadStatus.FAILED,
+      errorCode: "DOWNSTREAM_TASK_LOST",
+      errorMessage: "Downloader task was lost",
     });
   });
 
@@ -135,7 +290,7 @@ describe("Downloads API (e2e)", () => {
 
   it("streams an artifact and deletes it with the terminal record", async () => {
     const created = await createDownload();
-    const text = "第一章\n完整正文";
+    const text = "x";
     const artifactPath = `${created.body.id}.txt`;
     await writeFile(
       join(requireContext().artifactDirectory, artifactPath),

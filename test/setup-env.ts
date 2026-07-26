@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { assertDatabaseIsolation } from "../scripts/database-isolation.cjs";
 import { CrawlersService } from "../src/crawlers/crawlers.service";
 import { DownloadsWorker } from "../src/downloads/downloads.worker";
+import { TomatoDownloaderClient } from "../src/downloads/tomato-downloader/tomato-downloader.client";
 import { PrismaService } from "../src/shared/database/prisma.service";
 
 export interface E2eApplication {
@@ -13,6 +14,11 @@ export interface E2eApplication {
   prisma: PrismaService;
   artifactDirectory: string;
   close(): Promise<void>;
+}
+
+export interface E2eApplicationOptions {
+  tomatoDownloaderClient?: TomatoDownloaderClient;
+  disableDownloadsWorker?: boolean;
 }
 
 const MANAGED_ENVIRONMENT_KEYS = [
@@ -34,6 +40,7 @@ export async function createE2eApplication(
     CrawlersService,
     "getRankingCatalog" | "getRankingCrawler" | "getBookCrawler"
   >,
+  options: E2eApplicationOptions = {},
 ): Promise<E2eApplication> {
   const applicationDatabaseUrl = process.env.DATABASE_URL?.trim();
   const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
@@ -58,7 +65,7 @@ export async function createE2eApplication(
   delete process.env.TOMATO_DOWNLOADER_PASSWORD;
   process.env.DOWNLOAD_ARTIFACT_DIR = artifactDirectory;
   process.env.TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS = "10000";
-  process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS = "1000";
+  process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS = "60000";
   process.env.TOMATO_DOWNLOAD_TASK_TIMEOUT_MS = "7200000";
 
   let moduleReference: TestingModule | undefined;
@@ -66,14 +73,23 @@ export async function createE2eApplication(
 
   try {
     const { AppModule } = await import("../src/app.module");
-    moduleReference = await Test.createTestingModule({
+    const builder = Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(CrawlersService)
-      .useValue(crawlersService)
-      .overrideProvider(DownloadsWorker)
-      .useValue({})
-      .compile();
+      .useValue(crawlersService);
+    if (options.tomatoDownloaderClient !== undefined) {
+      builder
+        .overrideProvider(TomatoDownloaderClient)
+        .useValue(options.tomatoDownloaderClient);
+    }
+    if (
+      options.disableDownloadsWorker ??
+      options.tomatoDownloaderClient === undefined
+    ) {
+      builder.overrideProvider(DownloadsWorker).useValue({});
+    }
+    moduleReference = await builder.compile();
     app = moduleReference.createNestApplication();
     app.useLogger(false);
     app.useGlobalPipes(

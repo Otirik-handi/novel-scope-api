@@ -24,7 +24,7 @@ export interface DownloadsWorkerClock {
 }
 
 export interface DownloadsWorkerSleeper {
-  sleep(milliseconds: number): Promise<void>;
+  sleep(milliseconds: number, signal?: AbortSignal): Promise<void>;
 }
 
 export interface DownloadsWorkerOptions {
@@ -34,6 +34,14 @@ export interface DownloadsWorkerOptions {
 
 export class DownloadsWorkerStartupError extends Error {
   override readonly name = "DownloadsWorkerStartupError";
+}
+
+class DownloadsWorkerStoppingError extends Error {
+  override readonly name = "DownloadsWorkerStoppingError";
+}
+
+class DownloadsWorkerTaskTimeoutError extends Error {
+  override readonly name = "DownloadsWorkerTaskTimeoutError";
 }
 
 const FAILURE_MESSAGES = {
@@ -52,8 +60,11 @@ export class DownloadsWorker
 {
   private readonly logger = new Logger(DownloadsWorker.name);
   private activeTaskId: string | null = null;
+  private uncertainCreateTaskId: string | null = null;
+  private uncertainCreateAfterMs = 0;
   private stopping = false;
   private loopPromise: Promise<void> | null = null;
+  private readonly shutdown = new AbortController();
 
   constructor(
     private readonly repository: DownloadsRepository,
@@ -71,6 +82,7 @@ export class DownloadsWorker
 
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
+    this.shutdown.abort();
     await this.loopPromise;
   }
 
@@ -83,12 +95,18 @@ export class DownloadsWorker
       this.repository.findRecoverable(),
     ]);
     this.assertContract(status.version, config);
+    for (const task of recoverable) {
+      if (task.downstreamJobId === null) {
+        await this.finishMissingTask(task);
+      }
+    }
     if (recoverable.length > 1) {
       throw new DownloadsWorkerStartupError(
         "Multiple active NovelScope download tasks were found",
       );
     }
 
+    const task = recoverable[0];
     const knownJobIds = new Set(
       recoverable
         .map((task) => task.downstreamJobId)
@@ -105,21 +123,12 @@ export class DownloadsWorker
       );
     }
 
-    const task = recoverable[0];
-    if (!task) {
+    if (!task || task.downstreamJobId === null) {
       this.activeTaskId = null;
       return;
     }
-    if (
-      task.downstreamJobId !== null &&
-      !downstreamJobs.some((job) => job.id === task.downstreamJobId)
-    ) {
-      await this.repository.fail(task.id, {
-        code: "DOWNSTREAM_TASK_LOST",
-        message: FAILURE_MESSAGES.DOWNSTREAM_TASK_LOST,
-        finishedAt: this.clock.now(),
-      });
-      this.activeTaskId = null;
+    if (!downstreamJobs.some((job) => job.id === task.downstreamJobId)) {
+      await this.finishMissingTask(task);
       return;
     }
     this.activeTaskId = task.id;
@@ -145,19 +154,37 @@ export class DownloadsWorker
     }
 
     if (task.downstreamJobId === null) {
-      const downstream = await this.client.createJob(
-        task.book.externalBookId,
-        task.startChapter === null || task.endChapter === null
-          ? null
-          : {
-              startChapter: task.startChapter,
-              endChapter: task.endChapter,
-            },
-      );
+      let downstream =
+        this.uncertainCreateTaskId === task.id
+          ? await this.reconcileUncertainCreate(task)
+          : null;
+      if (downstream === null) {
+        try {
+          this.uncertainCreateAfterMs = this.clock.now().getTime() - 5_000;
+          downstream = await this.client.createJob(
+            task.book.externalBookId,
+            task.startChapter === null || task.endChapter === null
+              ? null
+              : {
+                  startChapter: task.startChapter,
+                  endChapter: task.endChapter,
+                },
+          );
+        } catch (error) {
+          if (
+            error instanceof TomatoDownloaderClientError &&
+            error.code === "UNAVAILABLE"
+          ) {
+            this.uncertainCreateTaskId = task.id;
+          }
+          throw error;
+        }
+      }
       const updated = await this.repository.setDownstreamJobId(
         task.id,
         downstream.id,
       );
+      this.uncertainCreateTaskId = null;
       if (updated === null) {
         this.activeTaskId = null;
         return;
@@ -176,7 +203,7 @@ export class DownloadsWorker
 
     const job = await this.client.getJob(downstreamJobId);
     if (job === null) {
-      await this.fail(task, "DOWNSTREAM_TASK_LOST");
+      await this.finishMissingTask(task);
       return;
     }
     if (job.progress !== null) {
@@ -206,7 +233,7 @@ export class DownloadsWorker
         await this.processOnce();
         unavailableDelay = 1_000;
         if (!this.stopping) {
-          await this.sleeper.sleep(this.options.pollIntervalMs);
+          if (!(await this.sleep(this.options.pollIntervalMs))) return;
         }
       } catch (error) {
         if (
@@ -214,7 +241,9 @@ export class DownloadsWorker
           error.code === "UNAVAILABLE"
         ) {
           this.logger.warn("Downloader is unavailable; pausing download queue");
-          if (!this.stopping) await this.sleeper.sleep(unavailableDelay);
+          if (!this.stopping) {
+            if (!(await this.sleep(unavailableDelay))) return;
+          }
           unavailableDelay = Math.min(unavailableDelay * 2, 30_000);
           continue;
         }
@@ -227,10 +256,13 @@ export class DownloadsWorker
           if (task) await this.fail(task, "DOWNLOADER_REJECTED");
           continue;
         }
+        if (this.stopping) return;
         this.logger.error(
           `Download worker iteration failed: ${error instanceof Error ? error.message : String(error)}`,
         );
-        if (!this.stopping) await this.sleeper.sleep(this.options.pollIntervalMs);
+        if (!this.stopping) {
+          if (!(await this.sleep(this.options.pollIntervalMs))) return;
+        }
       }
     }
   }
@@ -285,18 +317,24 @@ export class DownloadsWorker
       await this.fail(task, "ARTIFACT_NOT_FOUND");
       return;
     }
-    const item = await this.findArtifact(job.title, task.startedAt);
-    if (item === null) {
-      await this.fail(task, "ARTIFACT_NOT_FOUND");
-      return;
-    }
+    let signal: AbortSignal | null = null;
+    let storedPath: string | null = null;
     try {
-      const source = await this.client.openArtifact(item.relativePath);
+      signal = this.createTaskSignal(task);
+      const item = await this.findArtifact(job.title, task, signal);
+      if (item === null) {
+        await this.fail(task, "ARTIFACT_NOT_FOUND");
+        return;
+      }
+      const source = await this.client.openArtifact(item.relativePath, signal);
       const stored = await this.artifacts.store(
         task.id,
         source.stream,
         source.contentType,
+        signal,
       );
+      storedPath = stored.relativePath;
+      this.assertWithinDeadline(task);
       await this.repository.succeed(task.id, {
         artifactPath: stored.relativePath,
         filename: displayFilename(job.title, task),
@@ -306,6 +344,20 @@ export class DownloadsWorker
       });
       this.activeTaskId = null;
     } catch (error) {
+      if (this.stopping || error instanceof DownloadsWorkerStoppingError) {
+        throw new DownloadsWorkerStoppingError();
+      }
+      if (
+        error instanceof DownloadsWorkerTaskTimeoutError ||
+        signal?.aborted ||
+        this.hasTimedOut(task)
+      ) {
+        if (storedPath !== null) {
+          await this.artifacts.delete(storedPath).catch(() => undefined);
+        }
+        await this.timeout(task);
+        return;
+      }
       const code =
         typeof error === "object" &&
         error !== null &&
@@ -320,15 +372,21 @@ export class DownloadsWorker
 
   private async findArtifact(
     title: string,
-    startedAt: Date | null,
+    task: StoredBookDownload,
+    signal: AbortSignal,
   ): Promise<Awaited<ReturnType<TomatoDownloaderClient["scanLibrary"]>>["items"][number] | null> {
-    let scan = await this.client.scanLibrary(true);
+    this.assertWithinDeadline(task);
+    let scan = await this.client.scanLibrary(true, signal);
     while (scan.running) {
-      await this.sleeper.sleep(this.options.pollIntervalMs);
-      scan = await this.client.scanLibrary(false);
+      this.assertWithinDeadline(task);
+      if (!(await this.sleep(this.options.pollIntervalMs))) {
+        throw new DownloadsWorkerStoppingError();
+      }
+      this.assertWithinDeadline(task);
+      scan = await this.client.scanLibrary(false, signal);
     }
     const expected = `${downloaderSafeFsName(title)}.txt`;
-    const earliest = (startedAt ?? this.clock.now()).getTime() - 5_000;
+    const earliest = (task.startedAt ?? this.clock.now()).getTime() - 5_000;
     const candidates = scan.items.filter(
       (item) =>
         item.kind === "file" &&
@@ -338,6 +396,52 @@ export class DownloadsWorker
         item.modifiedAtMs >= earliest,
     );
     return candidates.length === 1 ? candidates[0]! : null;
+  }
+
+  private async reconcileUncertainCreate(
+    task: StoredBookDownload,
+  ): Promise<{ id: string } | null> {
+    const candidates = (await this.client.listJobs()).filter(
+      (job) =>
+        job.bookId === task.book.externalBookId &&
+        job.createdAtMs >= this.uncertainCreateAfterMs,
+    );
+    if (candidates.length > 1) {
+      throw new DownloadsWorkerStartupError(
+        "Downloader has multiple candidate jobs for an uncertain create request",
+      );
+    }
+    if (candidates.length === 1) {
+      return { id: candidates[0]!.id };
+    }
+    this.uncertainCreateTaskId = null;
+    return null;
+  }
+
+  private assertWithinDeadline(task: StoredBookDownload): void {
+    if (this.hasTimedOut(task)) {
+      throw new DownloadsWorkerTaskTimeoutError();
+    }
+  }
+
+  private createTaskSignal(task: StoredBookDownload): AbortSignal {
+    this.assertWithinDeadline(task);
+    const startedAt = task.startedAt ?? this.clock.now();
+    const elapsed = this.clock.now().getTime() - startedAt.getTime();
+    const remaining = Math.max(1, this.options.taskTimeoutMs - elapsed);
+    return AbortSignal.any([
+      this.shutdown.signal,
+      AbortSignal.timeout(remaining),
+    ]);
+  }
+
+  private async finishMissingTask(task: StoredBookDownload): Promise<void> {
+    if (task.status === BookDownloadStatus.CANCELING) {
+      await this.repository.markCanceled(task.id, this.clock.now());
+      this.activeTaskId = null;
+      return;
+    }
+    await this.fail(task, "DOWNSTREAM_TASK_LOST");
   }
 
   private async fail(
@@ -350,6 +454,16 @@ export class DownloadsWorker
       finishedAt: this.clock.now(),
     });
     this.activeTaskId = null;
+  }
+
+  private async sleep(milliseconds: number): Promise<boolean> {
+    try {
+      await this.sleeper.sleep(milliseconds, this.shutdown.signal);
+      return !this.stopping;
+    } catch (error) {
+      if (!this.stopping) throw error;
+      return false;
+    }
   }
 }
 
@@ -393,4 +507,3 @@ function downloaderSafeFsName(name: string): string {
   }
   return cleaned.replace(/[ .]+$/g, "") || "unnamed";
 }
-

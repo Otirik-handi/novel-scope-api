@@ -32,6 +32,7 @@ describe("bootstrap", () => {
     const applicationConfig = { port: 3100 };
     const configService = { getOrThrow: () => 3100 };
     const application = {
+      close: jest.fn().mockResolvedValue(undefined),
       enableShutdownHooks: jest.fn(),
       get: jest.fn((token: unknown) =>
         token === appConfig.KEY ? applicationConfig : configService,
@@ -51,7 +52,7 @@ describe("bootstrap", () => {
       .mockImplementation(() => undefined);
 
     try {
-      await import("./main");
+      const mainModule = await import("./main");
       await new Promise<void>((resolve) => setImmediate(resolve));
 
       expect(application.get).toHaveBeenCalledWith(appConfig.KEY);
@@ -76,6 +77,22 @@ describe("bootstrap", () => {
         application.enableShutdownHooks.mock.invocationCallOrder[0],
       ).toBeLessThan(application.listen.mock.invocationCallOrder[0]);
       expect(application.listen).toHaveBeenCalledWith(3100);
+
+      const startupError = new Error("startup failed");
+      application.listen.mockRejectedValueOnce(startupError);
+      const exportedBootstrap = (
+        mainModule as { bootstrap?: () => Promise<void> }
+      ).bootstrap;
+
+      expect(exportedBootstrap).toBeDefined();
+      await expect(exportedBootstrap!()).rejects.toBe(startupError);
+      expect(application.close).toHaveBeenCalledTimes(1);
+
+      const laterStartupError = new Error("later startup failed");
+      application.listen.mockRejectedValueOnce(laterStartupError);
+      application.close.mockRejectedValueOnce(new Error("close failed"));
+      await expect(exportedBootstrap!()).rejects.toBe(laterStartupError);
+      expect(application.close).toHaveBeenCalledTimes(2);
     } finally {
       jest.restoreAllMocks();
 

@@ -77,6 +77,7 @@ export class ArtifactStore {
     taskId: string,
     source: Readable,
     contentType: string,
+    signal?: AbortSignal,
   ): Promise<StoredArtifact> {
     const relativePath = `${taskId}.txt`;
     this.assertSafeName(relativePath);
@@ -142,7 +143,12 @@ export class ArtifactStore {
     });
 
     try {
-      await pipeline(source, inspector, createWriteStream(partialPath, { flags: "wx" }));
+      await pipeline(
+        source,
+        inspector,
+        createWriteStream(partialPath, { flags: "wx" }),
+        { signal },
+      );
       await rm(finalPath, { force: true });
       await rename(partialPath, finalPath);
       return {
