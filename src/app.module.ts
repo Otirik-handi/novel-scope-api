@@ -8,6 +8,7 @@ import downloadConfig from "./config/download.config";
 import { validateEnvironment } from "./config/env.validation";
 import { RankingsModule } from "./rankings/rankings.module";
 import { DatabaseModule } from "./shared/database/database.module";
+import { DownloadsModule } from "./downloads/downloads.module";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { DatabaseModule } from "./shared/database/database.module";
     DatabaseModule,
     RankingsModule,
     BooksModule,
+    DownloadsModule,
   ],
 })
 export class AppModule {}
