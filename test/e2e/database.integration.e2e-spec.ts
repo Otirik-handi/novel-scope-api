@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { PrismaClient } from "@prisma/client";
+import { BookDownloadStatus, PrismaClient } from "@prisma/client";
 import { assertDatabaseIsolation } from "../../scripts/database-isolation.cjs";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
@@ -275,4 +275,36 @@ describe("database schema", () => {
     createdBookIds.delete(book.id);
     expect(await prisma.bookDetail.findUnique({ where: { bookId: book.id } })).toBeNull();
   });
+  it("enforces BookDownload chapter ranges and cascades with Book", async () => {
+    const book = await prisma.book.create({ data: bookData("download") });
+    const download = await prisma.bookDownload.create({
+      data: {
+        bookId: book.id,
+        startChapter: 20,
+        endChapter: 30,
+      },
+    });
+    expect(download).toMatchObject({
+      status: BookDownloadStatus.QUEUED,
+      startChapter: 20,
+      endChapter: 30,
+    });
+
+    await expect(
+      prisma.bookDownload.create({
+        data: {
+          bookId: book.id,
+          startChapter: 30,
+          endChapter: 20,
+        },
+      }),
+    ).rejects.toThrow("BookDownload_chapter_range_check");
+
+    await prisma.book.delete({ where: { id: book.id } });
+    createdBookIds.delete(book.id);
+    await expect(
+      prisma.bookDownload.findUnique({ where: { id: download.id } }),
+    ).resolves.toBeNull();
+  });
+
 });

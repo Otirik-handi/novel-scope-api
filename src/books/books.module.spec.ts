@@ -12,9 +12,13 @@ describe("BooksModule", () => {
   it("is wired into a compiled application module", async () => {
     const originalDatabaseUrl = process.env.DATABASE_URL;
     const originalUserAgent = process.env.QIDIAN_USER_AGENT;
+    const originalDownloaderUrl = process.env.TOMATO_DOWNLOADER_BASE_URL;
+    const originalArtifactDirectory = process.env.DOWNLOAD_ARTIFACT_DIR;
     process.env.DATABASE_URL =
       "postgresql://postgres:postgres@localhost:5432/novel_scope";
     process.env.QIDIAN_USER_AGENT = "NovelScope books module tests";
+    process.env.TOMATO_DOWNLOADER_BASE_URL = "http://127.0.0.1:18423";
+    process.env.DOWNLOAD_ARTIFACT_DIR = "C:/NovelScope/downloads";
 
     try {
       const { AppModule } = await import("../app.module");
@@ -55,6 +59,16 @@ describe("BooksModule", () => {
         delete process.env.QIDIAN_USER_AGENT;
       } else {
         process.env.QIDIAN_USER_AGENT = originalUserAgent;
+      }
+      if (originalDownloaderUrl === undefined) {
+        delete process.env.TOMATO_DOWNLOADER_BASE_URL;
+      } else {
+        process.env.TOMATO_DOWNLOADER_BASE_URL = originalDownloaderUrl;
+      }
+      if (originalArtifactDirectory === undefined) {
+        delete process.env.DOWNLOAD_ARTIFACT_DIR;
+      } else {
+        process.env.DOWNLOAD_ARTIFACT_DIR = originalArtifactDirectory;
       }
     }
   });

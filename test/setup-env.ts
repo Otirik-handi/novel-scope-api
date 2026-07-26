@@ -1,14 +1,33 @@
-import { ValidationPipe, type INestApplication } from "@nestjs/common";
+﻿import { ValidationPipe, type INestApplication } from "@nestjs/common";
 import { Test, type TestingModule } from "@nestjs/testing";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { assertDatabaseIsolation } from "../scripts/database-isolation.cjs";
 import { CrawlersService } from "../src/crawlers/crawlers.service";
+import { DownloadsWorker } from "../src/downloads/downloads.worker";
 import { PrismaService } from "../src/shared/database/prisma.service";
 
 export interface E2eApplication {
   app: INestApplication;
   prisma: PrismaService;
+  artifactDirectory: string;
   close(): Promise<void>;
 }
+
+const MANAGED_ENVIRONMENT_KEYS = [
+  "DATABASE_URL",
+  "NODE_ENV",
+  "QIDIAN_USER_AGENT",
+  "FANQIE_REQUEST_TIMEOUT_MS",
+  "FANQIE_RANKING_REFRESH_CRON",
+  "TOMATO_DOWNLOADER_BASE_URL",
+  "TOMATO_DOWNLOADER_PASSWORD",
+  "DOWNLOAD_ARTIFACT_DIR",
+  "TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS",
+  "TOMATO_DOWNLOAD_POLL_INTERVAL_MS",
+  "TOMATO_DOWNLOAD_TASK_TIMEOUT_MS",
+] as const;
 
 export async function createE2eApplication(
   crawlersService: Pick<
@@ -24,16 +43,23 @@ export async function createE2eApplication(
     testDatabaseUrl,
   });
 
-  const originalDatabaseUrl = process.env.DATABASE_URL;
-  const originalNodeEnvironment = process.env.NODE_ENV;
-  const originalQidianUserAgent = process.env.QIDIAN_USER_AGENT;
-  const originalFanqieRequestTimeoutMs = process.env.FANQIE_REQUEST_TIMEOUT_MS;
-  const originalFanqieRankingRefreshCron = process.env.FANQIE_RANKING_REFRESH_CRON;
+  const originalEnvironment = Object.fromEntries(
+    MANAGED_ENVIRONMENT_KEYS.map((key) => [key, process.env[key]]),
+  );
+  const artifactDirectory = await mkdtemp(
+    join(tmpdir(), "novel-scope-e2e-artifacts-"),
+  );
   process.env.DATABASE_URL = testDatabaseUrl;
   process.env.NODE_ENV = "test";
   process.env.QIDIAN_USER_AGENT = "NovelScope E2E tests";
   process.env.FANQIE_REQUEST_TIMEOUT_MS = "10000";
   process.env.FANQIE_RANKING_REFRESH_CRON = "0 30 0 * * *";
+  process.env.TOMATO_DOWNLOADER_BASE_URL = "http://127.0.0.1:18423";
+  delete process.env.TOMATO_DOWNLOADER_PASSWORD;
+  process.env.DOWNLOAD_ARTIFACT_DIR = artifactDirectory;
+  process.env.TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS = "10000";
+  process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS = "1000";
+  process.env.TOMATO_DOWNLOAD_TASK_TIMEOUT_MS = "7200000";
 
   let moduleReference: TestingModule | undefined;
   let app: INestApplication | undefined;
@@ -45,6 +71,8 @@ export async function createE2eApplication(
     })
       .overrideProvider(CrawlersService)
       .useValue(crawlersService)
+      .overrideProvider(DownloadsWorker)
+      .useValue({})
       .compile();
     app = moduleReference.createNestApplication();
     app.useLogger(false);
@@ -61,19 +89,15 @@ export async function createE2eApplication(
     return {
       app: initializedApp,
       prisma: initializedApp.get(PrismaService),
+      artifactDirectory,
       close() {
         if (closePromise === undefined) {
           closePromise = (async () => {
             try {
               await initializedApp.close();
             } finally {
-              restoreEnvironment(
-                originalDatabaseUrl,
-                originalNodeEnvironment,
-                originalQidianUserAgent,
-                originalFanqieRequestTimeoutMs,
-                originalFanqieRankingRefreshCron,
-              );
+              await rm(artifactDirectory, { recursive: true, force: true });
+              restoreEnvironment(originalEnvironment);
             }
           })();
         }
@@ -85,13 +109,8 @@ export async function createE2eApplication(
     try {
       await closeFailedInitialization(app, moduleReference);
     } finally {
-      restoreEnvironment(
-        originalDatabaseUrl,
-        originalNodeEnvironment,
-        originalQidianUserAgent,
-        originalFanqieRequestTimeoutMs,
-        originalFanqieRankingRefreshCron,
-      );
+      await rm(artifactDirectory, { recursive: true, force: true });
+      restoreEnvironment(originalEnvironment);
     }
     throw error;
   }
@@ -116,30 +135,11 @@ async function closeFailedInitialization(
 }
 
 function restoreEnvironment(
-  databaseUrl: string | undefined,
-  nodeEnvironment: string | undefined,
-  qidianUserAgent: string | undefined,
-  fanqieRequestTimeoutMs: string | undefined,
-  fanqieRankingRefreshCron: string | undefined,
+  originalEnvironment: Record<string, string | undefined>,
 ): void {
-  if (databaseUrl === undefined) delete process.env.DATABASE_URL;
-  else process.env.DATABASE_URL = databaseUrl;
-
-  if (nodeEnvironment === undefined) delete process.env.NODE_ENV;
-  else process.env.NODE_ENV = nodeEnvironment;
-
-  if (qidianUserAgent === undefined) delete process.env.QIDIAN_USER_AGENT;
-  else process.env.QIDIAN_USER_AGENT = qidianUserAgent;
-
-  if (fanqieRequestTimeoutMs === undefined) {
-    delete process.env.FANQIE_REQUEST_TIMEOUT_MS;
-  } else {
-    process.env.FANQIE_REQUEST_TIMEOUT_MS = fanqieRequestTimeoutMs;
-  }
-
-  if (fanqieRankingRefreshCron === undefined) {
-    delete process.env.FANQIE_RANKING_REFRESH_CRON;
-  } else {
-    process.env.FANQIE_RANKING_REFRESH_CRON = fanqieRankingRefreshCron;
+  for (const key of MANAGED_ENVIRONMENT_KEYS) {
+    const value = originalEnvironment[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
 }

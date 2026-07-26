@@ -12,6 +12,8 @@ describe("bootstrap", () => {
       "BOOK_DETAIL_TTL_HOURS",
       "RANKING_REFRESH_CRON",
       "RANKING_REFRESH_TIME_ZONE",
+      "TOMATO_DOWNLOADER_BASE_URL",
+      "DOWNLOAD_ARTIFACT_DIR",
     ] as const;
     const originalEnvironment = Object.fromEntries(
       environmentKeys.map((key) => [key, process.env[key]]),
@@ -24,6 +26,8 @@ describe("bootstrap", () => {
     process.env.DATABASE_URL =
       "postgresql://postgres:postgres@localhost:5432/novel_scope";
     process.env.QIDIAN_USER_AGENT = "NovelScope/0.1";
+    process.env.TOMATO_DOWNLOADER_BASE_URL = "http://127.0.0.1:18423";
+    process.env.DOWNLOAD_ARTIFACT_DIR = "C:/NovelScope/downloads";
 
     const applicationConfig = { port: 3100 };
     const configService = { getOrThrow: () => 3100 };

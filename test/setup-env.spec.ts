@@ -19,6 +19,12 @@ const environmentKeys = [
   "QIDIAN_USER_AGENT",
   "FANQIE_REQUEST_TIMEOUT_MS",
   "FANQIE_RANKING_REFRESH_CRON",
+  "TOMATO_DOWNLOADER_BASE_URL",
+  "TOMATO_DOWNLOADER_PASSWORD",
+  "DOWNLOAD_ARTIFACT_DIR",
+  "TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS",
+  "TOMATO_DOWNLOAD_POLL_INTERVAL_MS",
+  "TOMATO_DOWNLOAD_TASK_TIMEOUT_MS",
 ] as const;
 
 describe("createE2eApplication lifecycle", () => {
@@ -52,6 +58,12 @@ describe("createE2eApplication lifecycle", () => {
     process.env.QIDIAN_USER_AGENT = "original-user-agent";
     process.env.FANQIE_REQUEST_TIMEOUT_MS = "54321";
     process.env.FANQIE_RANKING_REFRESH_CRON = "0 15 3 * * *";
+    process.env.TOMATO_DOWNLOADER_BASE_URL = "http://original:18423";
+    process.env.TOMATO_DOWNLOADER_PASSWORD = "original-secret";
+    process.env.DOWNLOAD_ARTIFACT_DIR = "C:/original-artifacts";
+    process.env.TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS = "11111";
+    process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS = "2222";
+    process.env.TOMATO_DOWNLOAD_TASK_TIMEOUT_MS = "33333";
     jest.mocked(assertDatabaseIsolation).mockResolvedValue(undefined);
 
     app = {
@@ -91,6 +103,12 @@ describe("createE2eApplication lifecycle", () => {
     expect(process.env.QIDIAN_USER_AGENT).toBe("original-user-agent");
     expect(process.env.FANQIE_REQUEST_TIMEOUT_MS).toBe("54321");
     expect(process.env.FANQIE_RANKING_REFRESH_CRON).toBe("0 15 3 * * *");
+    expect(process.env.TOMATO_DOWNLOADER_BASE_URL).toBe("http://original:18423");
+    expect(process.env.TOMATO_DOWNLOADER_PASSWORD).toBe("original-secret");
+    expect(process.env.DOWNLOAD_ARTIFACT_DIR).toBe("C:/original-artifacts");
+    expect(process.env.TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS).toBe("11111");
+    expect(process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS).toBe("2222");
+    expect(process.env.TOMATO_DOWNLOAD_TASK_TIMEOUT_MS).toBe("33333");
   }
 
   it("closes an app whose initialization fails and preserves the init error", async () => {
@@ -133,6 +151,12 @@ describe("createE2eApplication lifecycle", () => {
     expect(process.env.QIDIAN_USER_AGENT).toBe("NovelScope E2E tests");
     expect(process.env.FANQIE_REQUEST_TIMEOUT_MS).toBe("10000");
     expect(process.env.FANQIE_RANKING_REFRESH_CRON).toBe("0 30 0 * * *");
+    expect(process.env.TOMATO_DOWNLOADER_BASE_URL).toBe("http://127.0.0.1:18423");
+    expect(process.env.TOMATO_DOWNLOADER_PASSWORD).toBeUndefined();
+    expect(process.env.DOWNLOAD_ARTIFACT_DIR).toContain("novel-scope-e2e-artifacts-");
+    expect(process.env.TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS).toBe("10000");
+    expect(process.env.TOMATO_DOWNLOAD_POLL_INTERVAL_MS).toBe("1000");
+    expect(process.env.TOMATO_DOWNLOAD_TASK_TIMEOUT_MS).toBe("7200000");
 
     await Promise.all([context.close(), context.close()]);
 
