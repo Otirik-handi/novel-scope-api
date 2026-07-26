@@ -113,7 +113,7 @@ describe("Downloads API (e2e)", () => {
     const created = await createDownload();
     await request(requireContext().app.getHttpServer())
       .post(`/v1/downloads/${created.body.id}/cancel`)
-      .expect(201)
+      .expect(200)
       .expect(({ body }) => expect(body.status).toBe("canceled"));
     await request(requireContext().app.getHttpServer())
       .delete(`/v1/downloads/${created.body.id}`)

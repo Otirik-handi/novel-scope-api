@@ -1,4 +1,4 @@
-# NovelScope API V0.2.0
+﻿# NovelScope API V0.2.1
 
 ## 约定
 
@@ -174,13 +174,92 @@ POST /v1/books/fanqie/7420000000000000000/refresh
 
 该接口跳过 TTL 检查并同步采集。成功时 upsert 详情并返回 `stale: false`；失败时返回安全的 `502`，且不会覆盖最近一次成功数据。
 
+## 创建番茄正文下载任务
+
+```http
+POST /v1/books/fanqie/:bookId/downloads
+```
+
+空对象下载整本：
+
+```json
+{}
+```
+
+也可指定 1-based 闭区间：
+
+```json
+{
+  "startChapter": 20,
+  "endChapter": 30
+}
+```
+
+两个范围字段必须同时省略或同时提供，并满足 `1 <= startChapter <= endChapter`。成功返回 `202 Accepted`；每次调用创建独立任务，不做去重。
+
+## 查询正文下载任务
+
+```http
+GET /v1/downloads/:downloadId
+```
+
+成功响应示例：
+
+```json
+{
+  "id": "11111111-1111-4111-8111-111111111111",
+  "platform": "fanqie",
+  "externalBookId": "7069948840148732967",
+  "format": "txt",
+  "range": { "startChapter": 20, "endChapter": 30 },
+  "status": "succeeded",
+  "progress": { "chapterTotal": 11, "savedChapters": 11, "groupTotal": 1, "groupDone": 1, "savePhase": "TextSave" },
+  "artifact": {
+    "filename": "作品标题_第20-30章.txt",
+    "sizeBytes": 45678,
+    "sha256": "64位十六进制哈希",
+    "downloadUrl": "/v1/downloads/11111111-1111-4111-8111-111111111111/file"
+  },
+  "error": null,
+  "createdAt": "2026-07-26T10:00:00.000Z",
+  "startedAt": "2026-07-26T10:00:01.000Z",
+  "finishedAt": "2026-07-26T10:00:20.000Z",
+  "updatedAt": "2026-07-26T10:00:20.000Z"
+}
+```
+
+状态为 `queued`、`running`、`canceling`、`succeeded`、`failed` 或 `canceled`。失败任务只返回稳定错误码和安全消息，不包含 Downloader 密码、响应正文或内部路径。
+
+## 下载 TXT
+
+```http
+GET /v1/downloads/:downloadId/file
+```
+
+仅 `succeeded` 任务返回 `text/plain; charset=utf-8`。文件大小上限为 256 MiB，并附带 UTF-8 `Content-Disposition`。任务未成功时返回 `409`；记录成功但文件丢失时返回 `410`。
+
+## 取消和删除正文任务
+
+```http
+POST   /v1/downloads/:downloadId/cancel
+DELETE /v1/downloads/:downloadId
+```
+
+- queued 任务取消后立即成为 `canceled`。
+- running 任务先成为 `canceling`；取消竞态中下游已经完成时仍可能成为 `succeeded`。
+- 只能删除 `succeeded/failed/canceled` 任务；成功返回 `204` 并移除 NovelScope TXT。
+- 终态任务和 TXT 默认永久保留，直到调用 DELETE。
+
 ## 错误语义
 
 - `400 Bad Request`：平台、榜单机器键或书号形状不受支持。
 - `404 Not Found`：榜单键合法，但数据库中还没有成功快照。
+- `409 Conflict`：任务状态不允许下载、取消或删除。
+- `410 Gone`：任务声明成功，但 NovelScope artifact 已丢失。
 - `502 Bad Gateway`：采集、解析、完整性校验或持久化失败；响应不包含上游敏感信息。
 - 详情 TTL 过期且刷新失败：存在旧缓存时返回 `200` 与 `stale: true`，不存在缓存时返回 `502`。
 
-## V0.2.0 范围外
+## V0.2.1 范围外
 
-V0.2.0 不提供榜单历史查询、番茄分类远程发现、跨平台书籍去重、刷新鉴权或自定义响应包装。部署时应在反向代理或网络边界限制 POST 刷新端点。
+V0.2.1 不提供榜单历史查询、番茄分类远程发现、跨平台书籍去重、任务列表、用户归属、写操作鉴权或自定义响应包装。部署时应在反向代理或网络边界限制刷新、下载创建、取消和删除端点。
+

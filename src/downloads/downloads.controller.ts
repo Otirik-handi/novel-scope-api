@@ -1,4 +1,4 @@
-﻿import {
+import {
   ConflictException,
   Controller,
   Delete,
@@ -57,6 +57,7 @@ export class DownloadsController {
   }
 
   @Post("downloads/:downloadId/cancel")
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "取消正文下载任务" })
   async cancel(@Param() params: DownloadIdParamsDto): Promise<DownloadResource> {
     return this.execute(() => this.service.cancel(params.downloadId));

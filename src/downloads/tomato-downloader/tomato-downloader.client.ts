@@ -1,4 +1,4 @@
-﻿import { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import axios, {
   type AxiosAdapter,
   type AxiosInstance,
@@ -177,6 +177,13 @@ export class TomatoDownloaderClient {
         timeout: this.options.requestTimeoutMs,
         url,
       });
+      const contentType = headerString(response.headers, "content-type");
+      if (!contentType?.toLowerCase().includes("application/json")) {
+        throw new TomatoDownloaderClientError(
+          "INVALID_RESPONSE",
+          "Downloader returned an invalid JSON Content-Type",
+        );
+      }
       return requiredObject(response.data);
     } catch (error) {
       throw this.normalizeError(error);
@@ -330,6 +337,10 @@ function encodeRelativePath(relativePath: string): string {
 
 function headerString(headers: unknown, key: string): string | null {
   if (typeof headers !== "object" || headers === null) return null;
+  if ("get" in headers && typeof headers.get === "function") {
+    const received = headers.get(key);
+    if (typeof received === "string") return received;
+  }
   const value = (headers as Record<string, unknown>)[key];
   if (typeof value === "string") return value;
   return null;

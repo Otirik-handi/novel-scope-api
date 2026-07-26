@@ -22,7 +22,7 @@ async function bootstrap(): Promise<void> {
   const swaggerConfig = new DocumentBuilder()
     .setTitle("NovelScope API")
     .setDescription("小说数据查询与刷新 API")
-    .setVersion("0.2.0")
+    .setVersion("0.2.1")
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

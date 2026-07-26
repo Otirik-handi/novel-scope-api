@@ -1,11 +1,11 @@
-import {
+﻿import {
   Injectable,
   Logger,
   type OnApplicationBootstrap,
   type OnModuleDestroy,
 } from "@nestjs/common";
 import { BookDownloadStatus } from "@prisma/client";
-import { ArtifactStore, type StoredArtifact } from "./artifact-store";
+import { ArtifactStore } from "./artifact-store";
 import {
   DownloadsRepository,
   type StoredBookDownload,
@@ -327,7 +327,7 @@ export class DownloadsWorker
       await this.sleeper.sleep(this.options.pollIntervalMs);
       scan = await this.client.scanLibrary(false);
     }
-    const expected = `${title}.txt`;
+    const expected = `${downloaderSafeFsName(title)}.txt`;
     const earliest = (startedAt ?? this.clock.now()).getTime() - 5_000;
     const candidates = scan.items.filter(
       (item) =>
@@ -360,3 +360,37 @@ function displayFilename(title: string, task: StoredBookDownload): string {
   }
   return `${safeTitle}.txt`;
 }
+
+function downloaderSafeFsName(name: string): string {
+  const replacements: Record<string, string> = {
+    ":": "\uFF1A",
+    '"': "\uFF02",
+    "<": "\u300A",
+    ">": "\u300B",
+    "/": "\u3001",
+    "\\": "\u3001",
+    "|": "\uFF5C",
+    "?": "\uFF1F",
+    "*": "\uFF0A",
+  };
+  let cleaned = [...name]
+    .map((character) =>
+      character.charCodeAt(0) < 32
+        ? "_"
+        : (replacements[character] ?? character),
+    )
+    .join("");
+  cleaned = cleaned.replace(/[ .]+$/g, "");
+  if (cleaned.length === 0) cleaned = "unnamed";
+  const reserved = new Set([
+    "CON", "PRN", "AUX", "NUL",
+    ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
+    ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
+  ]);
+  if (reserved.has(cleaned.toUpperCase())) cleaned = `_${cleaned}`;
+  while (Buffer.byteLength(cleaned, "utf8") > 120) {
+    cleaned = cleaned.slice(0, -1);
+  }
+  return cleaned.replace(/[ .]+$/g, "") || "unnamed";
+}
+

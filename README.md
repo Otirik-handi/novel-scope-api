@@ -1,10 +1,10 @@
 ﻿# NovelScope API
 
-NovelScope API 是基于 NestJS、Prisma 和 PostgreSQL 的小说榜单与详情采集服务。V0.2.0 支持起点中文网（`qidian`）四类 Top 10 榜单、番茄小说（`fanqie`）74 个静态 Top 10 榜单，并按需缓存两个平台的书籍详情。
+NovelScope API 是基于 NestJS、Prisma 和 PostgreSQL 的小说榜单、详情采集与正文下载服务。V0.2.1 支持起点中文网（`qidian`）四类 Top 10 榜单、番茄小说（`fanqie`）74 个静态 Top 10 榜单，并按需缓存两个平台的书籍详情。
 
 采集引擎基于 Playwright 驱动系统 Edge。番茄采集先在可信站点初始化隔离的浏览器上下文，再使用同源会话读取榜单初始状态或请求详情；Cheerio 只定位详情页内嵌 JSON，脚本文本仅通过 `JSON.parse` 解析，不会执行。
 
-榜单刷新会保存不可变的历史快照，但 V0.2.0 只提供最新快照查询，不提供历史查询接口。书籍详情只保留每个平台、每个外部书号最近一次成功采集的数据。
+榜单刷新会保存不可变的历史快照，但 V0.2.1 只提供最新快照查询，不提供历史查询接口。书籍详情只保留每个平台、每个外部书号最近一次成功采集的数据。
 
 ## 前置条件
 
@@ -13,6 +13,7 @@ NovelScope API 是基于 NestJS、Prisma 和 PostgreSQL 的小说榜单与详情
 - PostgreSQL 数据库（开发者还需要一个独立的测试数据库）
 - Windows 系统（Playwright 使用 `channel: msedge` 调用本地 Edge 浏览器）
 - 一个明确、稳定且符合目标站要求的 `QIDIAN_USER_AGENT`
+- 专供 NovelScope 使用的 `TomatoNovelDownloader-Win64-v2.4.13.exe` Web 服务
 
 ## 安装与配置
 
@@ -37,6 +38,8 @@ TEST_DATABASE_URL=postgresql://account:password@localhost:5432/novel_scope_test
 QIDIAN_USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0
 QIDIAN_REQUEST_TIMEOUT_MS=30000
 FANQIE_REQUEST_TIMEOUT_MS=30000
+TOMATO_DOWNLOADER_BASE_URL=http://127.0.0.1:18423
+DOWNLOAD_ARTIFACT_DIR=C:/NovelScope/downloads
 ```
 
 `QIDIAN_USER_AGENT` 会通过 Axios 请求头发出，应填入真实的浏览器 UA。
@@ -52,6 +55,10 @@ FANQIE_REQUEST_TIMEOUT_MS=30000
 | `RANKING_REFRESH_CRON` | `0 0 6 * * *` | 起点四榜定时刷新 Cron，默认每天 06:00 |
 | `FANQIE_RANKING_REFRESH_CRON` | `0 30 0 * * *` | 番茄 74 榜定时刷新 Cron，默认每天 00:30 |
 | `RANKING_REFRESH_TIME_ZONE` | `Asia/Shanghai` | 定时刷新时区 |
+| `TOMATO_DOWNLOADER_PASSWORD` | 空 | Downloader Web UI 密码 |
+| `TOMATO_DOWNLOADER_REQUEST_TIMEOUT_MS` | `10000` | Downloader 控制请求超时（毫秒） |
+| `TOMATO_DOWNLOAD_POLL_INTERVAL_MS` | `1000` | 健康状态下任务轮询间隔（毫秒） |
+| `TOMATO_DOWNLOAD_TASK_TIMEOUT_MS` | `7200000` | 单个运行任务上限，默认 2 小时 |
 
 ## 数据库迁移
 
@@ -77,6 +84,29 @@ npm run db:generate
 
 ## 启动
 
+### 专用 TomatoNovelDownloader
+
+NovelScope 不启动、停止或修改 Downloader。先在 Downloader 的 `config.yml` 中确认：
+
+- `use_official_api: true`
+- `novel_format: txt`
+- `bulk_files: false`
+- `enable_segment_comments: false`
+- `enable_audiobook: false`
+- `auto_open_downloaded_files: false`
+- `ask_format_after_download: false`
+- `preferred_book_name_field: book_name`
+- `allow_overwrite_files: true`
+
+使用独立数据目录并只监听本机：
+
+```powershell
+$env:TOMATO_WEB_ADDR = "127.0.0.1:18423"
+& ..\TomatoNovelDownloader-Win64-v2.4.13.exe --server --data-dir C:\NovelScope\tomato-downloader
+```
+
+如启用 Downloader 密码，同时设置 `TOMATO_DOWNLOADER_PASSWORD`。该实例必须由 NovelScope 独占，不得通过 Web UI 或其他系统创建任务。Downloader 不可访问、版本不是 `2.4.13`、配置不符合契约、存在未知活跃任务或 artifact 目录不可写时，NovelScope 会拒绝启动。
+
 开发模式（文件变化时重启）：
 
 ```powershell
@@ -100,7 +130,7 @@ npm start
 http://localhost:3000/api-docs
 ```
 
-端口随 `PORT` 配置变化。完整响应示例、错误语义和缓存行为见 [docs/API.md](docs/API.md)。V0.2.0 提供：
+端口随 `PORT` 配置变化。完整响应示例、错误语义和缓存行为见 [docs/API.md](docs/API.md)。V0.2.1 提供：
 
 ```text
 GET  /v1/rankings/:platform/:rankTypeKey
@@ -108,6 +138,11 @@ POST /v1/rankings/:platform/:rankTypeKey/refresh
 POST /v1/rankings/:platform/refresh
 GET  /v1/books/:platform/:bookId
 POST /v1/books/:platform/:bookId/refresh
+POST /v1/books/fanqie/:bookId/downloads
+GET  /v1/downloads/:downloadId
+GET  /v1/downloads/:downloadId/file
+POST /v1/downloads/:downloadId/cancel
+DELETE /v1/downloads/:downloadId
 ```
 
 - 最新榜单查询只读取数据库，不会隐式访问外站；没有快照时返回 `404`。
@@ -115,13 +150,14 @@ POST /v1/books/:platform/:bookId/refresh
 - 全量刷新按平台静态目录顺序串行执行；单榜失败不会阻止后续榜单，响应逐榜给出机器键、中文名和结果。
 - 书籍详情不存在或过期时同步采集。过期刷新失败时返回最近一次成功数据并标记 `stale: true`；首次采集失败返回 `502`。
 - `POST /v1/books/:platform/:bookId/refresh` 强制刷新单本书籍，跳过 TTL 缓存检查。
-- V0.2.0 未实现刷新鉴权。部署时应在反向代理或网络边界限制 POST 刷新端点。
+- 番茄正文下载使用 PostgreSQL FIFO 异步任务，仅支持 TXT；成功产物由 NovelScope 接管并保存 SHA-256。
+- V0.2.1 未实现写操作鉴权。部署时应在反向代理或网络边界限制刷新、下载创建、取消和删除端点。
 
 通过 Swagger UI 执行 POST 刷新会访问外站并写入 `DATABASE_URL` 指向的数据库；书籍详情 GET 在缓存不存在或过期时也可能访问外站。手动验证前应确认数据库和外站访问配置符合预期。
 
 ## 采集原理
 
-V0.2.0 使用 Playwright 驱动系统 Edge 浏览器（`channel: msedge`）访问两个可信站点。每次采集使用独立 browser context，模块销毁时关闭复用的 browser。
+V0.2.1 使用 Playwright 驱动系统 Edge 浏览器（`channel: msedge`）访问两个可信站点。每次采集使用独立 browser context，模块销毁时关闭复用的 browser。
 
 - **书籍详情**：从页面的 JSON-LD `<script>` 标签和 OG meta 标签提取结构化数据，DOM 选择器作为补充和回退。
 - **榜单**：通过 `#book-img-text > ul > li[data-rid]` 提取 10 个排行项，书号优先从 `data-bid` 属性读取，作者从 `p.author > a.name` 提取。
@@ -168,3 +204,4 @@ npx tsc --noEmit --incremental false
 - 遇到验证码、登录墙或明确访问限制时立即失败，不尝试绕过。
 - Playwright 使用 `waitUntil: "load"` 等待页面就绪，避免 `networkidle` 因 WebSocket 长连接无限等待。
 - 客户端不做自动重试。错误详情记录在服务端日志中。
+

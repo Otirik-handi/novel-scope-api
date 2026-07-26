@@ -1,4 +1,4 @@
-﻿import { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import {
   AxiosError,
   type AxiosAdapter,
@@ -191,6 +191,21 @@ describe("TomatoDownloaderClient", () => {
     const artifact = await createClient(adapter).openArtifact("测试小说.txt");
     expect(artifact.contentType).toBe("text/plain; charset=utf-8");
     expect(artifact.stream).toBeInstanceOf(Readable);
+  });
+
+  it("rejects a JSON endpoint with the wrong Content-Type", async () => {
+    const { adapter } = createAdapter((config) =>
+      response(
+        config,
+        { version: "2.4.13", locked: false, save_dir: "C:/downloads" },
+        200,
+        { "content-type": "text/html" },
+      ),
+    );
+
+    await expect(createClient(adapter).getStatus()).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    });
   });
 
   it("rejects malformed responses with a stable safe error", async () => {

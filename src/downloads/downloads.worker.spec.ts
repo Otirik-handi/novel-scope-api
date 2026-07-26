@@ -1,4 +1,4 @@
-import { BookDownloadStatus } from "@prisma/client";
+﻿import { BookDownloadStatus } from "@prisma/client";
 import { Readable } from "node:stream";
 import type { ArtifactStore } from "./artifact-store";
 import type { DownloadsRepository } from "./downloads.repository";
@@ -6,7 +6,10 @@ import {
   DownloadsWorker,
   DownloadsWorkerStartupError,
 } from "./downloads.worker";
-import type { TomatoDownloaderClient } from "./tomato-downloader/tomato-downloader.client";
+import {
+  TomatoDownloaderClientError,
+  type TomatoDownloaderClient,
+} from "./tomato-downloader/tomato-downloader.client";
 
 const startedAt = new Date("2026-07-26T12:00:00.000Z");
 
@@ -87,7 +90,7 @@ function createSubject(overrides: {
     store: jest.fn(),
     ...overrides.artifacts,
   };
-  let now = overrides.now ?? startedAt;
+  const now = overrides.now ?? startedAt;
   const sleeper = { sleep: jest.fn().mockResolvedValue(undefined) };
   const worker = new DownloadsWorker(
     repository as unknown as DownloadsRepository,
@@ -108,6 +111,21 @@ describe("DownloadsWorker", () => {
     expect(client.getStatus).toHaveBeenCalledTimes(1);
     expect(client.getConfig).toHaveBeenCalledTimes(1);
     expect(client.listJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an unsupported Downloader version", async () => {
+    const { worker } = createSubject({
+      client: {
+        getStatus: jest.fn().mockResolvedValue({
+          version: "2.4.14",
+          locked: false,
+          saveDirectory: "C:/downloads",
+        }),
+      },
+    });
+    await expect(worker.initialize()).rejects.toBeInstanceOf(
+      DownloadsWorkerStartupError,
+    );
   });
 
   it("rejects startup when Downloader has an unknown active job", async () => {
@@ -212,7 +230,7 @@ describe("DownloadsWorker", () => {
           {
             id: "42",
             bookId: running.book.externalBookId,
-            title: "测试小说",
+            title: "测试:小说?",
             author: "作者",
             state: "done",
             message: null,
@@ -224,7 +242,7 @@ describe("DownloadsWorker", () => {
         getJob: jest.fn().mockResolvedValue({
           id: "42",
           bookId: running.book.externalBookId,
-          title: "测试小说",
+          title: "测试:小说?",
           author: "作者",
           state: "done",
           message: null,
@@ -237,7 +255,7 @@ describe("DownloadsWorker", () => {
           items: [
             {
               kind: "file",
-              name: "测试小说.txt",
+              name: "测试：小说？.txt",
               relativePath: "测试小说.txt",
               extension: "txt",
               sizeBytes: 100,
@@ -270,11 +288,113 @@ describe("DownloadsWorker", () => {
     );
     expect(succeed).toHaveBeenCalledWith(running.id, {
       artifactPath: `${running.id}.txt`,
-      filename: "测试小说_第20-30章.txt",
+      filename: "测试_小说__第20-30章.txt",
       sizeBytes: 12,
       sha256: "abc",
       finishedAt: startedAt,
     });
+  });
+
+  it("marks a downstream canceled task canceled", async () => {
+    const running = task({ downstreamJobId: "42" });
+    const markCanceled = jest.fn();
+    const { worker } = createSubject({
+      repository: {
+        findRecoverable: jest.fn().mockResolvedValue([running]),
+        findById: jest.fn().mockResolvedValue(running),
+        markCanceled,
+      },
+      client: {
+        listJobs: jest.fn().mockResolvedValue([
+          {
+            id: "42",
+            bookId: running.book.externalBookId,
+            title: "????",
+            author: null,
+            state: "canceled",
+            message: null,
+            progress: null,
+            createdAtMs: startedAt.getTime(),
+            updatedAtMs: startedAt.getTime(),
+          },
+        ]),
+        getJob: jest.fn().mockResolvedValue({
+          id: "42",
+          bookId: running.book.externalBookId,
+          title: "????",
+          author: null,
+          state: "canceled",
+          message: null,
+          progress: null,
+          createdAtMs: startedAt.getTime(),
+          updatedAtMs: startedAt.getTime(),
+        }),
+      },
+    });
+    await worker.initialize();
+    await worker.processOnce();
+    expect(markCanceled).toHaveBeenCalledWith(running.id, startedAt);
+  });
+
+  it("pauses the queue with a one-second backoff when Downloader disconnects", async () => {
+    const running = task();
+    let releaseSleep!: () => void;
+    const sleepStarted = new Promise<void>((resolve) => {
+      releaseSleep = resolve;
+    });
+    const sleeper = {
+      sleep: jest.fn().mockImplementation(
+        () => new Promise<void>((resolve) => {
+          releaseSleep = () => { resolve(); };
+          sleepStarted.then(() => undefined);
+        }),
+      ),
+    };
+    const repository = {
+      findRecoverable: jest.fn().mockResolvedValue([]),
+      claimNextQueued: jest.fn().mockResolvedValue(running),
+      findById: jest.fn(),
+    };
+    const client = {
+      getStatus: jest.fn().mockResolvedValue({
+        version: "2.4.13",
+        locked: false,
+        saveDirectory: "C:/downloads",
+      }),
+      getConfig: jest.fn().mockResolvedValue({
+        useOfficialApi: true,
+        novelFormat: "txt",
+        bulkFiles: false,
+        enableSegmentComments: false,
+        enableAudiobook: false,
+        autoOpenDownloadedFiles: false,
+        askFormatAfterDownload: false,
+        preferredBookNameField: "book_name",
+        allowOverwriteFiles: true,
+      }),
+      listJobs: jest.fn().mockResolvedValue([]),
+      createJob: jest.fn().mockRejectedValue(
+        new TomatoDownloaderClientError("UNAVAILABLE", "unavailable"),
+      ),
+    };
+    const artifacts = { validateRoot: jest.fn().mockResolvedValue(undefined) };
+    const worker = new DownloadsWorker(
+      repository as unknown as DownloadsRepository,
+      client as unknown as TomatoDownloaderClient,
+      artifacts as unknown as ArtifactStore,
+      { now: () => startedAt },
+      sleeper,
+      { pollIntervalMs: 500, taskTimeoutMs: 7_200_000 },
+    );
+
+    await worker.onApplicationBootstrap();
+    while (sleeper.sleep.mock.calls.length === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const closing = worker.onModuleDestroy();
+    releaseSleep();
+    await closing;
+    expect(sleeper.sleep).toHaveBeenCalledWith(1_000);
   });
 
   it("cancels and fails a task after the two-hour timeout", async () => {
@@ -317,3 +437,5 @@ describe("DownloadsWorker", () => {
     });
   });
 });
+
+
