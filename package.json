@@ -10,8 +10,10 @@
   "scripts": {
     "test": "jest --runInBand",
     "build": "nest build",
+    "swagger:compile": "nest build",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
+    "dev": "bun run swagger:compile && bun run db:migrate:dev && bun run start:dev",
     "lint": "eslint .",
     "test:db": "node scripts/run-database-integration-tests.cjs",
     "db:generate": "prisma generate",

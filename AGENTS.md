@@ -57,7 +57,8 @@ npm ci                     # 安装锁定依赖
 npm run db:generate        # 生成 Prisma Client
 npm run db:migrate:dev     # 本地开发迁移
 npm run db:migrate:deploy  # 应用已提交迁移
-npm run start:dev          # 开发模式启动
+bun run swagger:compile    # 使用 Swagger CLI 插件编译
+bun run dev                # 编译 Swagger、迁移数据库并启动开发模式
 npm run build              # 构建 dist/
 npm start                  # 启动构建产物
 npm test                   # 单元测试，不运行 test/e2e/
