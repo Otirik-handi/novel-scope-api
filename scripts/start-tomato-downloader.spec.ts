@@ -76,6 +76,7 @@ describe("start-tomato-downloader", () => {
   it.each([
     ["http://localhost:18423", "localhost:18423"],
     ["http://[::1]:18423", "[::1]:18423"],
+    ["http://127.0.0.1:80", "127.0.0.1:80"],
   ])("derives a local web address from %s", (baseUrl, expected) => {
     expect(deriveTomatoWebAddress(baseUrl)).toBe(expected);
   });

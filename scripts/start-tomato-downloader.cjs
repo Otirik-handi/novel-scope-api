@@ -19,17 +19,26 @@ function requiredEnvironmentValue(environment, key) {
 }
 
 function deriveTomatoWebAddress(baseUrl) {
+  const normalizedBaseUrl = baseUrl.trim();
   let url;
   try {
-    url = new URL(baseUrl);
+    url = new URL(normalizedBaseUrl);
   } catch {
     throw new Error(BASE_URL_ERROR);
   }
 
+  const authority = normalizedBaseUrl
+    .slice(normalizedBaseUrl.indexOf("//") + 2)
+    .split(/[/?#]/, 1)[0];
+  const portText = authority?.match(/:(\d+)$/)?.[1];
+  const port = portText === undefined ? Number.NaN : Number(portText);
+
   if (
     url.protocol !== "http:" ||
     !LOCAL_HOSTS.has(url.hostname) ||
-    url.port === "" ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65_535 ||
     url.username !== "" ||
     url.password !== "" ||
     url.pathname !== "/" ||
@@ -39,7 +48,7 @@ function deriveTomatoWebAddress(baseUrl) {
     throw new Error(BASE_URL_ERROR);
   }
 
-  return url.host;
+  return `${url.hostname}:${port}`;
 }
 
 function normalizeExecutablePath(rawPath) {
