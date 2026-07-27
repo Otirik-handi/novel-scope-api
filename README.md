@@ -39,6 +39,8 @@ QIDIAN_USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (
 QIDIAN_REQUEST_TIMEOUT_MS=30000
 FANQIE_REQUEST_TIMEOUT_MS=30000
 TOMATO_DOWNLOADER_BASE_URL=http://127.0.0.1:18423
+TOMATO_DOWNLOADER_EXECUTABLE_PATH=C:/Tools/TomatoNovelDownloader-Win64-v2.4.13.exe
+TOMATO_DOWNLOADER_DATA_DIR=C:/NovelScope/tomato-downloader
 DOWNLOAD_ARTIFACT_DIR=C:/NovelScope/downloads
 ```
 
@@ -86,7 +88,7 @@ npm run db:generate
 
 ### 专用 TomatoNovelDownloader
 
-NovelScope 不启动、停止或修改 Downloader。先在 Downloader 的 `config.yml` 中确认：
+NovelScope API 进程不启动、停止或修改 Downloader。先在 Downloader 的 `config.yml` 中确认：
 
 - `use_official_api: true`
 - `novel_format: txt`
@@ -98,14 +100,23 @@ NovelScope 不启动、停止或修改 Downloader。先在 Downloader 的 `confi
 - `preferred_book_name_field: book_name`
 - `allow_overwrite_files: true`
 
-使用独立数据目录并只监听本机：
+在 `.env` 中配置 Downloader 可执行文件和独立数据目录。`TOMATO_DOWNLOADER_BASE_URL` 必须是带显式端口的本机 HTTP 地址；启动脚本会从中派生 Downloader 的 `TOMATO_WEB_ADDR`：
 
-```powershell
-$env:TOMATO_WEB_ADDR = "127.0.0.1:18423"
-& ..\TomatoNovelDownloader-Win64-v2.4.13.exe --server --data-dir C:\NovelScope\tomato-downloader
+```dotenv
+TOMATO_DOWNLOADER_BASE_URL=http://127.0.0.1:18423
+TOMATO_DOWNLOADER_EXECUTABLE_PATH=C:/Tools/TomatoNovelDownloader-Win64-v2.4.13.exe
+TOMATO_DOWNLOADER_DATA_DIR=C:/NovelScope/tomato-downloader
 ```
 
-如启用 Downloader 密码，同时设置 `TOMATO_DOWNLOADER_PASSWORD`。该实例必须由 NovelScope 独占，不得通过 Web UI 或其他系统创建任务。Downloader 不可访问、版本不是 `2.4.13`、配置不符合契约、存在未知活跃任务或 artifact 目录不可写时，NovelScope 会拒绝启动。
+以前台方式启动 Downloader：
+
+```powershell
+npm run start:downloader
+```
+
+脚本会在需要时创建数据目录，并在当前控制台显示 Downloader 日志；按 `Ctrl+C` 或关闭控制台会终止 Downloader。路径通过子进程参数传递，可以包含空格。如启用 Downloader 密码，同时设置 `TOMATO_DOWNLOADER_PASSWORD`。
+
+该实例必须由 NovelScope 独占，不得通过 Web UI 或其他系统创建任务。先保持 Downloader 运行，再启动 NovelScope API。Downloader 不可访问、版本不是 `2.4.13`、配置不符合契约、存在未知活跃任务或 artifact 目录不可写时，NovelScope 会拒绝启动。
 
 开发模式（文件变化时重启）：
 

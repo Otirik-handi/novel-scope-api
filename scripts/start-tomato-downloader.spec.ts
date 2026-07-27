@@ -1,6 +1,13 @@
-import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { constants, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   deriveTomatoWebAddress,
   main,
@@ -209,5 +216,26 @@ describe("start-tomato-downloader", () => {
       "TOMATO_DOWNLOADER_EXECUTABLE_PATH",
     );
     expect(writeError.mock.calls[0]?.[0]).not.toContain("do-not-print-this");
+  });
+
+  it("exposes the Downloader startup npm command", async () => {
+    const packageJson = JSON.parse(
+      await readFile(resolve("package.json"), "utf8"),
+    ) as { scripts: Record<string, string> };
+
+    expect(packageJson.scripts["start:downloader"]).toBe(
+      "node scripts/start-tomato-downloader.cjs",
+    );
+  });
+
+  it("documents the required Downloader startup environment", async () => {
+    const example = await readFile(resolve(".env.example"), "utf8");
+
+    expect(example).toContain(
+      "TOMATO_DOWNLOADER_EXECUTABLE_PATH=C:/Tools/TomatoNovelDownloader-Win64-v2.4.13.exe",
+    );
+    expect(example).toContain(
+      "TOMATO_DOWNLOADER_DATA_DIR=C:/NovelScope/tomato-downloader",
+    );
   });
 });
