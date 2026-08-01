@@ -32,6 +32,8 @@ export interface BookDownloadJob {
   message: string | null;
   progress: Record<string, unknown> | null;
   error: { code: string; message: string } | null;
+  createdAtMs: number;
+  updatedAtMs: number;
 }
 
 export interface BookDownloadJobRef {

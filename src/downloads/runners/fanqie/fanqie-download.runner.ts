@@ -139,6 +139,8 @@ function toBookDownloadJob(job: DownloaderJob): BookDownloadJob {
             message: job.message ?? "Downloader rejected the task",
           }
         : null,
+    createdAtMs: job.createdAtMs,
+    updatedAtMs: job.updatedAtMs,
   };
 }
 
