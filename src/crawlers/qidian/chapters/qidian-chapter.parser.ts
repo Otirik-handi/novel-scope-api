@@ -40,7 +40,7 @@ export class QidianChapterParser {
       typeof chapterInfo.chapterName === "string" &&
       chapterInfo.chapterName.trim() !== ""
         ? chapterInfo.chapterName.trim()
-        : `?${input.chapterId}?`;
+        : `\u7b2c${input.chapterId}\u7ae0`;
 
     return {
       title,
@@ -53,7 +53,7 @@ export class QidianChapterParser {
   private emptyError(): QidianChapterCrawlerError {
     return new QidianChapterCrawlerError(
       "QIDIAN_CHAPTER_EMPTY",
-      "???????????",
+      "\u8d77\u70b9\u7ae0\u8282\u6b63\u6587\u7f3a\u5931\u6216\u4e3a\u7a7a",
     );
   }
 }

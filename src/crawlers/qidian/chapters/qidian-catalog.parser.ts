@@ -40,7 +40,7 @@ export class QidianCatalogParser {
     if (chapters.length === 0) {
       throw new QidianChapterCrawlerError(
         "QIDIAN_CATALOG_PARSE_FAILED",
-        "???????????",
+        "\u8d77\u70b9\u76ee\u5f55\u4e3a\u7a7a\u6216\u65e0\u6cd5\u89e3\u6790",
       );
     }
 
