@@ -13,12 +13,13 @@ export interface QidianCatalogChapter {
 export interface QidianCatalogParseInput {
   html: string;
   sourceUrl: string;
+  bookId: string;
 }
 
 export class QidianCatalogParser {
   parse(input: QidianCatalogParseInput): QidianCatalogChapter[] {
     const requestedBookId = this.parseRequestedBookId(input.sourceUrl);
-    if (requestedBookId === null) {
+    if (requestedBookId === null || requestedBookId !== input.bookId) {
       throw this.invalidChapterError();
     }
 
@@ -30,7 +31,7 @@ export class QidianCatalogParser {
         const link = $(li).find("a.chapter-name").first();
         const href = link.attr("href") ?? "";
         const title = normalizeHtmlText(link.text());
-        const chapterId = this.parseChapterId(href, requestedBookId);
+        const chapterId = this.parseChapterId(href, input.bookId);
         if (chapterId === null || title === "") {
           throw this.invalidChapterError();
         }
