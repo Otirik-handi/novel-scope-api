@@ -22,7 +22,10 @@ export class QidianChapterCrawler {
     private readonly chapterParser = new QidianChapterParser(),
   ) {}
 
-  async fetchCatalog(externalBookId: string): Promise<QidianCatalog> {
+  async fetchCatalog(
+    externalBookId: string,
+    signal?: AbortSignal,
+  ): Promise<QidianCatalog> {
     if (!/^\d+$/.test(externalBookId)) {
       throw new QidianChapterCrawlerError(
         "QIDIAN_RANGE_INVALID",
@@ -32,6 +35,7 @@ export class QidianChapterCrawler {
 
     const page = await this.client.fetchPage(
       `${QIDIAN_BOOK_PATH_PREFIX}${externalBookId}/`,
+      signal,
     );
     const chapters = this.catalogParser.parse({
       html: page.html,
@@ -55,6 +59,7 @@ export class QidianChapterCrawler {
   async fetchChapter(
     externalBookId: string,
     chapterId: string,
+    signal?: AbortSignal,
   ): Promise<QidianChapterContent> {
     if (!/^\d+$/.test(externalBookId) || !/^\d+$/.test(chapterId)) {
       throw new QidianChapterCrawlerError(
@@ -65,6 +70,7 @@ export class QidianChapterCrawler {
 
     const page = await this.client.fetchPage(
       `/chapter/${externalBookId}/${chapterId}/`,
+      signal,
     );
     return this.chapterParser.parse({
       html: page.html,

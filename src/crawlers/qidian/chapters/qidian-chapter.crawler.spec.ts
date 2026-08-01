@@ -77,4 +77,49 @@ describe("QidianChapterCrawler", () => {
     });
     expect(bookParser.parse).not.toHaveBeenCalled();
   });
+
+  it("forwards the abort signal when fetching a catalog", async () => {
+    const client = {
+      fetchPage: jest.fn().mockResolvedValue({
+        html: "<html></html>",
+        sourceUrl: "https://www.qidian.com/book/1/",
+      }),
+    };
+    const bookParser = {
+      parse: jest.fn().mockReturnValue({ title: "Title", author: "Author" }),
+    };
+    const catalogParser = { parse: jest.fn().mockReturnValue([]) };
+    const crawler = new QidianChapterCrawler(
+      client as never,
+      bookParser as never,
+      catalogParser as never,
+      { parse: jest.fn() } as never,
+    );
+    const signal = new AbortController().signal;
+
+    await crawler.fetchCatalog("1", signal);
+
+    expect(client.fetchPage).toHaveBeenCalledWith("/book/1/", signal);
+  });
+
+  it("forwards the abort signal when fetching a chapter", async () => {
+    const client = {
+      fetchPage: jest.fn().mockResolvedValue({
+        html: "<html></html>",
+        sourceUrl: "https://www.qidian.com/chapter/1/2/",
+      }),
+    };
+    const chapterParser = { parse: jest.fn().mockReturnValue({}) };
+    const crawler = new QidianChapterCrawler(
+      client as never,
+      { parse: jest.fn() } as never,
+      { parse: jest.fn() } as never,
+      chapterParser as never,
+    );
+    const signal = new AbortController().signal;
+
+    await crawler.fetchChapter("1", "2", signal);
+
+    expect(client.fetchPage).toHaveBeenCalledWith("/chapter/1/2/", signal);
+  });
 });

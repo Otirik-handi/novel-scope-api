@@ -4,6 +4,7 @@ import { Injectable } from "@nestjs/common";
 import { QidianChapterCrawler } from "../../../crawlers/qidian/chapters/qidian-chapter.crawler";
 import { QidianChapterCrawlerError } from "../../../crawlers/qidian/chapters/qidian-chapter.error";
 import type { QidianCatalogChapter } from "../../../crawlers/qidian/chapters/qidian-catalog.parser";
+import { BookDownloadRunnerError } from "../book-download-runner.interface";
 import type {
   ArtifactSource,
   BookDownloadJob,
@@ -80,7 +81,10 @@ export class QidianDownloadRunner implements BookDownloadRunner {
     void _signal;
     const job = this.jobs.get(jobId);
     if (job === undefined || job.state !== "done") {
-      throw new Error("ARTIFACT_NOT_FOUND");
+      throw new BookDownloadRunnerError(
+        "ARTIFACT_NOT_FOUND",
+        "Qidian artifact was not found",
+      );
     }
     return {
       stream: Readable.from(job.parts),
@@ -98,11 +102,12 @@ export class QidianDownloadRunner implements BookDownloadRunner {
     try {
       const catalog = await this.crawler.fetchCatalog(
         job.request.externalBookId,
+        job.controller.signal,
       );
       const chapters = this.selectRange(catalog.chapters, job.request.range);
       job.title = catalog.title;
       job.author = catalog.author;
-      job.parts.push(`${catalog.title}\nAuthor: ${catalog.author}\n`);
+      job.parts.push(`${catalog.title}\n\u4f5c\u8005\uff1a${catalog.author}\n`);
       job.progress = {
         chapterTotal: chapters.length,
         savedChapters: 0,
@@ -123,6 +128,7 @@ export class QidianDownloadRunner implements BookDownloadRunner {
         const content = await this.crawler.fetchChapter(
           catalog.bookId,
           chapter.chapterId,
+          job.controller.signal,
         );
         this.throwIfAborted(job);
 
@@ -145,7 +151,7 @@ export class QidianDownloadRunner implements BookDownloadRunner {
       if (savedChapters === 0) {
         throw new QidianChapterCrawlerError(
           "QIDIAN_RANGE_UNAVAILABLE",
-          "No downloadable free chapters in range",
+          "\u8d77\u70b9\u7ae0\u8282\u4e3aVIP\u6216\u4e0d\u53ef\u4e0b\u8f7d",
         );
       }
 
@@ -180,14 +186,14 @@ export class QidianDownloadRunner implements BookDownloadRunner {
       if (range.startChapter < 1 || range.endChapter > chapters.length) {
         throw new QidianChapterCrawlerError(
           "QIDIAN_RANGE_INVALID",
-          "Qidian chapter range is outside the catalog",
+          "\u8d77\u70b9\u7ae0\u8282\u8303\u56f4\u8d85\u51fa\u76ee\u5f55",
         );
       }
       endIndex = Math.min(endIndex, range.endChapter);
       if (range.startChapter > endIndex) {
         throw new QidianChapterCrawlerError(
           "QIDIAN_RANGE_UNAVAILABLE",
-          `Qidian chapter ${range.startChapter} is VIP or not free`,
+          `\u8d77\u70b9\u7b2c${range.startChapter}\u7ae0\u4e3aVIP\u6216\u4e0d\u53ef\u4e0b\u8f7d`,
         );
       }
       return chapters.filter(
@@ -200,7 +206,7 @@ export class QidianDownloadRunner implements BookDownloadRunner {
     if (endIndex < 1) {
       throw new QidianChapterCrawlerError(
         "QIDIAN_RANGE_UNAVAILABLE",
-        "This qidian book has no downloadable free chapters",
+        "\u8be5\u8d77\u70b9\u4e66\u7c4d\u6ca1\u6709\u53ef\u4e0b\u8f7d\u7684\u514d\u8d39\u7ae0\u8282",
       );
     }
     return chapters.filter((chapter) => chapter.index <= endIndex);
@@ -222,7 +228,7 @@ export class QidianDownloadRunner implements BookDownloadRunner {
     if (job.controller.signal.aborted) {
       throw new QidianChapterCrawlerError(
         "QIDIAN_JOB_CANCELED",
-        "Qidian download task was canceled",
+        "\u8d77\u70b9\u4e0b\u8f7d\u4efb\u52a1\u5df2\u53d6\u6d88",
       );
     }
   }
@@ -247,9 +253,20 @@ function normalizeError(error: unknown): { code: string; message: string } {
   if (error instanceof QidianChapterCrawlerError) {
     return { code: error.code, message: error.message };
   }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    error.code.startsWith("QIDIAN_")
+  ) {
+    return {
+      code: error.code,
+      message: error instanceof Error ? error.message : String(error.code),
+    };
+  }
   return {
     code: "QIDIAN_CHAPTER_FETCH_FAILED",
-    message:
-      error instanceof Error ? error.message : "Qidian chapter fetch failed",
+    message: error instanceof Error ? error.message : "\u8d77\u70b9\u7ae0\u8282\u6293\u53d6\u5931\u8d25",
   };
 }

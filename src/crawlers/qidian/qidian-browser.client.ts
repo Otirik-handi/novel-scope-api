@@ -1,5 +1,5 @@
 ﻿import { Injectable, Logger, type OnModuleDestroy } from "@nestjs/common";
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { QIDIAN_BASE_URL } from "./qidian.constants";
 import {
   QidianClientError,
@@ -14,6 +14,13 @@ export interface QidianBrowserClientOptions {
 
 const ACCESS_CONTROL_HTTP_STATUSES = new Set([401, 403, 429]);
 
+const abortError = () =>
+  new QidianClientError(
+    "Qidian access was blocked",
+    "QIDIAN_ACCESS_BLOCKED",
+    "access-denied",
+  );
+
 @Injectable()
 export class QidianBrowserClient implements OnModuleDestroy {
   private browser: Browser | null = null;
@@ -25,7 +32,7 @@ export class QidianBrowserClient implements OnModuleDestroy {
     await this.close();
   }
 
-  async fetchPage(pathOrUrl: string): Promise<QidianPage> {
+  async fetchPage(pathOrUrl: string, signal?: AbortSignal): Promise<QidianPage> {
     let url: URL;
 
     try {
@@ -36,6 +43,10 @@ export class QidianBrowserClient implements OnModuleDestroy {
         error instanceof Error ? error.stack : undefined,
       );
       throw error;
+    }
+
+    if (signal?.aborted) {
+      throw abortError();
     }
 
     const browser = await this.getBrowser();
@@ -49,7 +60,7 @@ export class QidianBrowserClient implements OnModuleDestroy {
       this.options.logger.log(`GET ${url.href}`);
       const startedAt = Date.now();
 
-      const response = await page.goto(url.href, {
+      const navigation = page.goto(url.href, {
         timeout: this.options.requestTimeoutMs,
         waitUntil: "load",
       }).catch((error: unknown) => {
@@ -60,6 +71,27 @@ export class QidianBrowserClient implements OnModuleDestroy {
         );
         throw error;
       });
+      let abortListener: (() => void) | undefined;
+      const abortPromise = new Promise<never>((_resolve, reject) => {
+        if (!signal) {
+          return;
+        }
+        abortListener = () => reject(abortError());
+        if (signal.aborted) {
+          abortListener();
+          return;
+        }
+        signal.addEventListener("abort", abortListener, { once: true });
+      });
+      let response: Awaited<ReturnType<Page["goto"]>> | null = null;
+
+      try {
+        response = await Promise.race([navigation, abortPromise]);
+      } finally {
+        if (signal && abortListener) {
+          signal.removeEventListener("abort", abortListener);
+        }
+      }
 
       const elapsed = Date.now() - startedAt;
 
