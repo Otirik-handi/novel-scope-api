@@ -3,7 +3,7 @@ import { Test } from "@nestjs/testing";
 import { assertDatabaseIsolation } from "../scripts/database-isolation.cjs";
 import type { CrawlersService } from "../src/crawlers/crawlers.service";
 import { DownloadsWorker } from "../src/downloads/downloads.worker";
-import { TomatoDownloaderClient } from "../src/downloads/tomato-downloader/tomato-downloader.client";
+import { TomatoDownloaderClient } from "../src/downloads/runners/fanqie/tomato-downloader/tomato-downloader.client";
 import { createE2eApplication } from "./setup-env";
 
 jest.mock("@nestjs/testing", () => ({

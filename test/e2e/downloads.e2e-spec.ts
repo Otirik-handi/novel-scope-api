@@ -4,8 +4,8 @@ import { join } from "node:path";
 import request from "supertest";
 import type { CrawlersService } from "../../src/crawlers/crawlers.service";
 import { DownloadsRepository } from "../../src/downloads/downloads.repository";
-import type { TomatoDownloaderClient } from "../../src/downloads/tomato-downloader/tomato-downloader.client";
-import type { DownloaderJob } from "../../src/downloads/tomato-downloader/tomato-downloader.contract";
+import type { TomatoDownloaderClient } from "../../src/downloads/runners/fanqie/tomato-downloader/tomato-downloader.client";
+import type { DownloaderJob } from "../../src/downloads/runners/fanqie/tomato-downloader/tomato-downloader.contract";
 import { createE2eApplication, type E2eApplication } from "../setup-env";
 
 const crawlersService: Pick<

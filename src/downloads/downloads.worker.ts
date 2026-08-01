@@ -13,11 +13,11 @@ import {
 import {
   TomatoDownloaderClient,
   TomatoDownloaderClientError,
-} from "./tomato-downloader/tomato-downloader.client";
+} from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
 import {
   TOMATO_DOWNLOADER_SUPPORTED_VERSION,
   type DownloaderJob,
-} from "./tomato-downloader/tomato-downloader.contract";
+} from "./runners/fanqie/tomato-downloader/tomato-downloader.contract";
 
 export interface DownloadsWorkerClock {
   now(): Date;

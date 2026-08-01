@@ -8,7 +8,7 @@ import {
   DownloadNotFoundError,
   DownloadsService,
 } from "./downloads.service";
-import type { TomatoDownloaderClient } from "./tomato-downloader/tomato-downloader.client";
+import type { TomatoDownloaderClient } from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
 
 const now = new Date("2026-07-26T12:00:00.000Z");
 

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { assertDatabaseIsolation } from "../scripts/database-isolation.cjs";
 import { CrawlersService } from "../src/crawlers/crawlers.service";
 import { DownloadsWorker } from "../src/downloads/downloads.worker";
-import { TomatoDownloaderClient } from "../src/downloads/tomato-downloader/tomato-downloader.client";
+import { TomatoDownloaderClient } from "../src/downloads/runners/fanqie/tomato-downloader/tomato-downloader.client";
 import { PrismaService } from "../src/shared/database/prisma.service";
 
 export interface E2eApplication {

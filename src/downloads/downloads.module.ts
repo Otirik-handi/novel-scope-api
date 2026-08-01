@@ -12,7 +12,7 @@ import {
   type DownloadsWorkerClock,
   type DownloadsWorkerSleeper,
 } from "./downloads.worker";
-import { TomatoDownloaderClient } from "./tomato-downloader/tomato-downloader.client";
+import { TomatoDownloaderClient } from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
 
 export const DOWNLOADS_CLOCK = Symbol("DOWNLOADS_CLOCK");
 export const DOWNLOADS_SLEEPER = Symbol("DOWNLOADS_SLEEPER");

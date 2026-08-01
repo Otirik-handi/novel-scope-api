@@ -10,8 +10,8 @@ import {
   DownloadsRepository,
   type StoredBookDownload,
 } from "./downloads.repository";
-import type { TomatoDownloaderClient } from "./tomato-downloader/tomato-downloader.client";
-import type { ChapterRange } from "./tomato-downloader/tomato-downloader.contract";
+import type { TomatoDownloaderClient } from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
+import type { ChapterRange } from "./runners/fanqie/tomato-downloader/tomato-downloader.contract";
 
 export class DownloadNotFoundError extends Error {
   override readonly name = "DownloadNotFoundError";

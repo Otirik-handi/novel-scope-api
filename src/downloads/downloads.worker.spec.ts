@@ -9,7 +9,7 @@ import {
 import {
   TomatoDownloaderClientError,
   type TomatoDownloaderClient,
-} from "./tomato-downloader/tomato-downloader.client";
+} from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
 
 const startedAt = new Date("2026-07-26T12:00:00.000Z");
 
