@@ -74,4 +74,50 @@ describe("FanqieDownloadRunner", () => {
       updatedAtMs: 2,
     });
   });
+
+  it("opens a matching artifact for a done job", async () => {
+    const signal = new AbortController().signal;
+    const stream = { pipe() {} } as never;
+    const client = {
+      getJob: jest.fn().mockResolvedValue({
+        id: "job-3",
+        bookId: "book-1",
+        title: "Test Novel",
+        author: "Author",
+        state: "done",
+        message: null,
+        progress: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      }),
+      scanLibrary: jest.fn().mockResolvedValue({
+        running: false,
+        items: [
+          {
+            kind: "file",
+            name: "Test Novel.txt",
+            relativePath: "Test Novel.txt",
+            extension: "txt",
+            sizeBytes: 1,
+            modifiedAtMs: Date.now(),
+          },
+        ],
+      }),
+      openArtifact: jest.fn().mockResolvedValue({
+        stream,
+        contentType: "text/plain; charset=utf-8",
+      }),
+    } as unknown as TomatoDownloaderClient;
+
+    const runner = new FanqieDownloadRunner(client);
+    const task = { id: "download-3", startedAt: new Date() };
+
+    await expect(
+      runner.openArtifact("job-3", task, signal),
+    ).resolves.toEqual({ stream, contentType: "text/plain; charset=utf-8" });
+    expect(client.openArtifact).toHaveBeenCalledWith(
+      "Test Novel.txt",
+      signal,
+    );
+  });
 });
