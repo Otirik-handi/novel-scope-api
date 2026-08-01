@@ -18,6 +18,7 @@ import {
   TOMATO_DOWNLOADER_SUPPORTED_VERSION,
   type DownloaderJob,
 } from "./runners/fanqie/tomato-downloader/tomato-downloader.contract";
+import { downloaderSafeFsName } from "../utils/downloader-filename.util";
 
 export interface DownloadsWorkerClock {
   now(): Date;
@@ -547,37 +548,4 @@ function displayFilename(title: string, task: StoredBookDownload): string {
     return `${safeTitle}_第${task.startChapter}-${task.endChapter}章.txt`;
   }
   return `${safeTitle}.txt`;
-}
-
-function downloaderSafeFsName(name: string): string {
-  const replacements: Record<string, string> = {
-    ":": "\uFF1A",
-    '"': "\uFF02",
-    "<": "\u300A",
-    ">": "\u300B",
-    "/": "\u3001",
-    "\\": "\u3001",
-    "|": "\uFF5C",
-    "?": "\uFF1F",
-    "*": "\uFF0A",
-  };
-  let cleaned = [...name]
-    .map((character) =>
-      character.charCodeAt(0) < 32
-        ? "_"
-        : (replacements[character] ?? character),
-    )
-    .join("");
-  cleaned = cleaned.replace(/[ .]+$/g, "");
-  if (cleaned.length === 0) cleaned = "unnamed";
-  const reserved = new Set([
-    "CON", "PRN", "AUX", "NUL",
-    ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
-    ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
-  ]);
-  if (reserved.has(cleaned.toUpperCase())) cleaned = `_${cleaned}`;
-  while (Buffer.byteLength(cleaned, "utf8") > 120) {
-    cleaned = cleaned.slice(0, -1);
-  }
-  return cleaned.replace(/[ .]+$/g, "") || "unnamed";
 }
