@@ -156,4 +156,40 @@ describe("QidianChapterParser", () => {
 
     expect(error).toMatchObject({ code: "QIDIAN_CHAPTER_FETCH_FAILED" });
   });
+
+  it("rejects SSR book ids that do not match the requested book", () => {
+    const html = `
+      <script id="vite-plugin-ssr_pageContext" type="application/json">
+        ${JSON.stringify({
+          pageContext: {
+            pageProps: {
+              pageData: {
+                chapterInfo: {
+                  bookId: "2",
+                  chapterName: "Chapter 1",
+                  content: "<p>Text</p>",
+                  vipStatus: 0,
+                  cES: 0,
+                },
+              },
+            },
+          },
+        })}
+      </script>
+    `;
+
+    let error: unknown;
+    try {
+      new QidianChapterParser().parse({
+        html,
+        sourceUrl: "https://www.qidian.com/chapter/1/100/",
+        bookId: "1",
+        chapterId: "100",
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({ code: "QIDIAN_CHAPTER_FETCH_FAILED" });
+  });
 });

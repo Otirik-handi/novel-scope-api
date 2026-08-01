@@ -54,6 +54,15 @@ export class QidianChapterParser {
       throw this.identityMismatchError();
     }
 
+    if (
+      chapterInfo.bookId !== undefined &&
+      String(chapterInfo.bookId) !== input.bookId
+    ) {
+      throw this.identityMismatchError(
+        "\u8d77\u70b9\u7ae0\u8282\u9875\u4e0e\u8bf7\u6c42\u4e66\u7c4d\u4e0d\u4e00\u81f4",
+      );
+    }
+
     const content = contentToPlainText(chapterInfo.content);
     if (content === "") {
       throw this.emptyError();
@@ -100,10 +109,12 @@ export class QidianChapterParser {
     }
   }
 
-  private identityMismatchError(): QidianChapterCrawlerError {
+  private identityMismatchError(
+    message = "\u8d77\u70b9\u7ae0\u8282\u9875\u4e0e\u8bf7\u6c42\u7ae0\u8282\u4e0d\u4e00\u81f4",
+  ): QidianChapterCrawlerError {
     return new QidianChapterCrawlerError(
       "QIDIAN_CHAPTER_FETCH_FAILED",
-      "\u8d77\u70b9\u7ae0\u8282\u9875\u4e0e\u8bf7\u6c42\u7ae0\u8282\u4e0d\u4e00\u81f4",
+      message,
     );
   }
 }
