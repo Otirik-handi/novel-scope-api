@@ -1,4 +1,5 @@
-﻿import {
+import { ApiHideProperty } from "@nestjs/swagger";
+import {
   IsDefined,
   IsInt,
   Min,
@@ -41,6 +42,7 @@ export class CreateBookDownloadDto {
   @Min(1)
   endChapter?: number;
 
+  @ApiHideProperty()
   @Validate(ChapterRangeOrderConstraint)
   private readonly chapterRangeOrder?: never;
 }
