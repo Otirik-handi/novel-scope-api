@@ -33,15 +33,15 @@ export class QidianChapterCrawler {
     const page = await this.client.fetchPage(
       `${QIDIAN_BOOK_PATH_PREFIX}${externalBookId}/`,
     );
-    const book = this.bookParser.parse({
-      html: page.html,
-      sourceUrl: page.sourceUrl,
-      fetchedAt: new Date(),
-    });
     const chapters = this.catalogParser.parse({
       html: page.html,
       sourceUrl: page.sourceUrl,
       bookId: externalBookId,
+    });
+    const book = this.bookParser.parse({
+      html: page.html,
+      sourceUrl: page.sourceUrl,
+      fetchedAt: new Date(),
     });
 
     return {
@@ -56,6 +56,13 @@ export class QidianChapterCrawler {
     externalBookId: string,
     chapterId: string,
   ): Promise<QidianChapterContent> {
+    if (!/^\d+$/.test(externalBookId) || !/^\d+$/.test(chapterId)) {
+      throw new QidianChapterCrawlerError(
+        "QIDIAN_RANGE_INVALID",
+        "Invalid qidian chapter id",
+      );
+    }
+
     const page = await this.client.fetchPage(
       `/chapter/${externalBookId}/${chapterId}/`,
     );
