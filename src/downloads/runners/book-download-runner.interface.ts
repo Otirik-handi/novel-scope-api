@@ -57,3 +57,15 @@ export interface BookDownloadRunner {
   ): Promise<ArtifactSource>;
   releaseJob(jobId: string): Promise<void>;
 }
+
+export class BookDownloadRunnerError extends Error {
+  override readonly name = "BookDownloadRunnerError";
+
+  constructor(
+    readonly code: string,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+  }
+}

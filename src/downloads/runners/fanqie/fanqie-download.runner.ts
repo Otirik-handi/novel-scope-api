@@ -15,6 +15,7 @@ import type {
   BookDownloadRunner,
   DownloadTaskContext,
 } from "../book-download-runner.interface";
+import { BookDownloadRunnerError } from "../book-download-runner.interface";
 
 @Injectable()
 export class FanqieDownloadRunner implements BookDownloadRunner {
@@ -56,16 +57,24 @@ export class FanqieDownloadRunner implements BookDownloadRunner {
   ): Promise<ArtifactSource> {
     const job = await this.getJob(jobId);
     if (!job?.title) {
-      throw new Error("ARTIFACT_NOT_FOUND");
+      throw new BookDownloadRunnerError(
+        "ARTIFACT_NOT_FOUND",
+        "Downloader artifact was not found",
+      );
     }
     const item = await this.findArtifact(job.title, task, signal);
     if (item === null) {
-      throw new Error("ARTIFACT_NOT_FOUND");
+      throw new BookDownloadRunnerError(
+        "ARTIFACT_NOT_FOUND",
+        "Downloader artifact was not found",
+      );
     }
     return this.client.openArtifact(item.relativePath, signal);
   }
 
-  async releaseJob(_jobId: string): Promise<void> {}
+  async releaseJob(_jobId: string): Promise<void> {
+    void _jobId;
+  }
 
   private async findArtifact(
     title: string,
@@ -154,5 +163,14 @@ function downloaderSafeFsName(name: string): string {
     .join("");
   cleaned = cleaned.replace(/[ .]+$/g, "");
   if (cleaned.length === 0) cleaned = "unnamed";
+  const reserved = new Set([
+    "CON", "PRN", "AUX", "NUL",
+    ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
+    ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`),
+  ]);
+  if (reserved.has(cleaned.toUpperCase())) cleaned = `_${cleaned}`;
+  while (Buffer.byteLength(cleaned, "utf8") > 120) {
+    cleaned = cleaned.slice(0, -1);
+  }
   return cleaned.replace(/[ .]+$/g, "") || "unnamed";
 }
