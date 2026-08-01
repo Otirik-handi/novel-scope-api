@@ -1,6 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import { setTimeout as sleep } from "node:timers/promises";
-import { TomatoDownloaderClient } from "./tomato-downloader/tomato-downloader.client";
+import {
+  TomatoDownloaderClient,
+  TomatoDownloaderClientError,
+} from "./tomato-downloader/tomato-downloader.client";
 import {
   TOMATO_DOWNLOADER_SUPPORTED_VERSION,
   type DownloaderConfig,
@@ -70,7 +73,20 @@ export class FanqieDownloadRunner implements BookDownloadRunner {
         "Downloader artifact was not found",
       );
     }
-    return this.client.openArtifact(item.relativePath, signal);
+    try {
+      return await this.client.openArtifact(item.relativePath, signal);
+    } catch (error) {
+      if (
+        error instanceof TomatoDownloaderClientError &&
+        error.code === "NOT_FOUND"
+      ) {
+        throw new BookDownloadRunnerError(
+          "ARTIFACT_NOT_FOUND",
+          "Downloader artifact was not found",
+        );
+      }
+      throw error;
+    }
   }
 
   async releaseJob(_jobId: string): Promise<void> {

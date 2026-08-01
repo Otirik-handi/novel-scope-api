@@ -19,7 +19,8 @@ import type {
 export type TomatoDownloaderClientErrorCode =
   | "UNAVAILABLE"
   | "INVALID_RESPONSE"
-  | "REJECTED";
+  | "REJECTED"
+  | "NOT_FOUND";
 
 export class TomatoDownloaderClientError extends Error {
   override readonly name = "TomatoDownloaderClientError";
@@ -223,6 +224,12 @@ export class TomatoDownloaderClient {
   private normalizeError(error: unknown): TomatoDownloaderClientError {
     if (error instanceof TomatoDownloaderClientError) return error;
     if (isAxiosError(error)) {
+      if (error.response?.status === 404) {
+        return new TomatoDownloaderClientError(
+          "NOT_FOUND",
+          "Downloader artifact was not found",
+        );
+      }
       const code = error.response ? "REJECTED" : "UNAVAILABLE";
       return new TomatoDownloaderClientError(
         code,
