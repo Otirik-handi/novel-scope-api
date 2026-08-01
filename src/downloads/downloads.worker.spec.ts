@@ -1172,6 +1172,51 @@ describe("DownloadsWorker", () => {
     expect(client.openArtifact).not.toHaveBeenCalled();
   });
 
+  it("maps a missing artifact downloader 404 to NOT_FOUND", async () => {
+    const running = task({ downstreamJobId: "42" });
+    const doneJob = downstreamJob({ state: "done" });
+    const fail = jest.fn();
+    const { worker } = createSubject({
+      repository: {
+        findRecoverable: jest.fn().mockResolvedValue([running]),
+        findById: jest.fn().mockResolvedValue(running),
+        fail,
+      },
+      client: {
+        listJobs: jest.fn().mockResolvedValue([doneJob]),
+        getJob: jest.fn().mockResolvedValue(doneJob),
+        scanLibrary: jest.fn().mockResolvedValue({
+          running: false,
+          items: [
+            {
+              kind: "file",
+              name: "书.txt",
+              relativePath: "book.txt",
+              extension: "txt",
+              sizeBytes: 1,
+              modifiedAtMs: startedAt.getTime(),
+            },
+          ],
+        }),
+        openArtifact: jest.fn().mockRejectedValue(
+          new TomatoDownloaderClientError(
+            "NOT_FOUND",
+            "Downloader artifact was not found",
+          ),
+        ),
+      },
+    });
+
+    await worker.initialize();
+    await worker.processOnce();
+
+    expect(fail).toHaveBeenCalledWith(running.id, {
+      code: "NOT_FOUND",
+      message: "Downloader artifact was not found",
+      finishedAt: startedAt,
+    });
+  });
+
   it("interrupts the current sleep during shutdown without canceling the downstream job", async () => {
     let releaseSleep!: () => void;
     let sleepStarted!: () => void;

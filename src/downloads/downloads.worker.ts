@@ -49,6 +49,7 @@ const FAILURE_MESSAGES = {
   DOWNLOADER_REJECTED: "Downloader rejected the task",
   DOWNSTREAM_TASK_LOST: "Downloader task was lost",
   DOWNLOAD_TIMEOUT: "Download task timed out",
+  NOT_FOUND: "Downloader artifact was not found",
   ARTIFACT_NOT_FOUND: "Downloader artifact was not found",
   ARTIFACT_TOO_LARGE: "Downloaded artifact exceeds the size limit",
   ARTIFACT_INVALID: "Downloader returned an invalid TXT artifact",
