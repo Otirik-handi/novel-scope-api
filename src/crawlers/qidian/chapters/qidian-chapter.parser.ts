@@ -13,7 +13,6 @@ export interface QidianChapterContent {
   title: string;
   content: string;
   isVip: boolean;
-  encrypted: boolean;
 }
 
 export class QidianChapterParser {
@@ -39,8 +38,15 @@ export class QidianChapterParser {
     }
 
     const chapterInfo = findChapterInfo(data);
+    if (chapterInfo === null) {
+      throw this.emptyError();
+    }
+
+    if (chapterInfo.cES === 2) {
+      throw this.encryptedError();
+    }
+
     if (
-      chapterInfo === null ||
       typeof chapterInfo.content !== "string" ||
       chapterInfo.content.trim() === ""
     ) {
@@ -78,8 +84,14 @@ export class QidianChapterParser {
       title,
       content,
       isVip: chapterInfo.vipStatus === 1,
-      encrypted: chapterInfo.cES === 2,
     };
+  }
+
+  private encryptedError(): QidianChapterCrawlerError {
+    return new QidianChapterCrawlerError(
+      "QIDIAN_CHAPTER_ENCRYPTED",
+      "\u8d77\u70b9\u7ae0\u8282\u4e3a\u5b57\u4f53\u52a0\u5bc6\u7ae0\u8282\uff0c\u6682\u4e0d\u652f\u6301\u4e0b\u8f7d",
+    );
   }
 
   private emptyError(): QidianChapterCrawlerError {

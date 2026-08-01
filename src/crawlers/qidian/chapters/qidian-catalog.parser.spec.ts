@@ -1,6 +1,21 @@
 import { QidianCatalogParser } from "./qidian-catalog.parser";
 
 describe("QidianCatalogParser", () => {
+  it("fails when the catalog HTML is empty", () => {
+    let error: unknown;
+    try {
+      new QidianCatalogParser().parse({
+        html: "<html><body>No catalog</body></html>",
+        sourceUrl: "https://www.qidian.com/book/1/",
+        bookId: "1",
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({ code: "QIDIAN_CATALOG_PARSE_FAILED" });
+  });
+
   it("assigns global indexes and detects VIP chapters", () => {
     const html = `
       <div class="catalog-volume">
