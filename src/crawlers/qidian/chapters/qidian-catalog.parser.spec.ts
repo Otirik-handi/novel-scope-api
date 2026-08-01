@@ -182,4 +182,27 @@ describe("QidianCatalogParser", () => {
 
     expect(error).toMatchObject({ code: "QIDIAN_CATALOG_PARSE_FAILED" });
   });
+
+  it("rejects a source URL with credentials", () => {
+    const html = `
+      <div class="catalog-volume">
+        <ul class="volume-chapters">
+          <li class="chapter-item"><a class="chapter-name" href="//www.qidian.com/chapter/1/100/">Chapter 1</a></li>
+        </ul>
+      </div>
+    `;
+
+    let error: unknown;
+    try {
+      new QidianCatalogParser().parse({
+        html,
+        sourceUrl: "https://user:pass@www.qidian.com/book/1/",
+        bookId: "1",
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({ code: "QIDIAN_CATALOG_PARSE_FAILED" });
+  });
 });

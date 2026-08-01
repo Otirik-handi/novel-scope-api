@@ -58,8 +58,10 @@ export class QidianCatalogParser {
 
   private parseRequestedBookId(sourceUrl: string): string | null {
     try {
-      const url = new URL(sourceUrl, QIDIAN_BASE_URL);
-      return url.origin === QIDIAN_BASE_URL
+      const url = new URL(sourceUrl);
+      return url.origin === QIDIAN_BASE_URL &&
+        url.username === "" &&
+        url.password === ""
         ? url.pathname.match(/^\/book\/(\d+)\/?$/)?.[1] ?? null
         : null;
     } catch {

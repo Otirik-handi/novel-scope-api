@@ -42,17 +42,6 @@ export class QidianChapterParser {
       throw this.emptyError();
     }
 
-    if (chapterInfo.cES === 2) {
-      throw this.encryptedError();
-    }
-
-    if (
-      typeof chapterInfo.content !== "string" ||
-      chapterInfo.content.trim() === ""
-    ) {
-      throw this.emptyError();
-    }
-
     if (
       chapterInfo.chapterId !== undefined &&
       String(chapterInfo.chapterId) !== input.chapterId
@@ -67,6 +56,17 @@ export class QidianChapterParser {
       throw this.identityMismatchError(
         "\u8d77\u70b9\u7ae0\u8282\u9875\u4e0e\u8bf7\u6c42\u4e66\u7c4d\u4e0d\u4e00\u81f4",
       );
+    }
+
+    if (chapterInfo.cES === 2) {
+      throw this.encryptedError();
+    }
+
+    if (
+      typeof chapterInfo.content !== "string" ||
+      chapterInfo.content.trim() === ""
+    ) {
+      throw this.emptyError();
     }
 
     const content = contentToPlainText(chapterInfo.content);
