@@ -100,7 +100,7 @@ describe("QidianDownloadRunner", () => {
     });
   });
 
-  it("preserves a QIDIAN_ error code from a crawler fetch failure", async () => {
+  it("preserves a Qidian access-blocked error with a Chinese message", async () => {
     const crawler = {
       fetchCatalog: jest.fn().mockResolvedValue({
         bookId: "1",
@@ -129,11 +129,11 @@ describe("QidianDownloadRunner", () => {
     expect(job.state).toBe("failed");
     expect(job.error).toEqual({
       code: "QIDIAN_ACCESS_BLOCKED",
-      message: "QIDIAN_ACCESS_BLOCKED",
+      message: "\u8d77\u70b9\u8bbf\u95ee\u53d7\u9650",
     });
   });
 
-  it("reports an out-of-catalog range in Chinese", async () => {
+  it("reports an invalid range in Chinese", async () => {
     const crawler = {
       fetchCatalog: jest.fn().mockResolvedValue({
         bookId: "1",
@@ -162,8 +162,40 @@ describe("QidianDownloadRunner", () => {
     expect(job.state).toBe("failed");
     expect(job.error).toEqual({
       code: "QIDIAN_RANGE_INVALID",
-      message: "\u8d77\u70b9\u7ae0\u8282\u8303\u56f4\u8d85\u51fa\u76ee\u5f55",
+      message: "\u8d77\u70b9\u7ae0\u8282\u8303\u56f4\u65e0\u6548",
     });
+  });
+
+  it("rejects a range whose start is after its end", async () => {
+    const crawler = {
+      fetchCatalog: jest.fn().mockResolvedValue({
+        bookId: "1",
+        title: "Test Book",
+        author: "Test Author",
+        chapters: Array.from({ length: 5 }, (_, index) => ({
+          index: index + 1,
+          title: `Chapter ${index + 1}`,
+          chapterId: String(100 + index),
+          sourceUrl: `https://www.qidian.com/chapter/1/${100 + index}/`,
+          isVip: false,
+        })),
+      }),
+      fetchChapter: jest.fn(),
+    };
+    const runner = new QidianDownloadRunner(crawler as never);
+
+    const ref = await runner.createJob({
+      externalBookId: "1",
+      range: { startChapter: 5, endChapter: 4 },
+    });
+    const job = await waitForTerminal(runner, ref.id);
+
+    expect(job.state).toBe("failed");
+    expect(job.error).toEqual({
+      code: "QIDIAN_RANGE_INVALID",
+      message: "\u8d77\u70b9\u7ae0\u8282\u8303\u56f4\u65e0\u6548",
+    });
+    expect(crawler.fetchChapter).not.toHaveBeenCalled();
   });
 
   it("reports an unavailable starting chapter in Chinese", async () => {
@@ -202,8 +234,7 @@ describe("QidianDownloadRunner", () => {
     expect(job.state).toBe("failed");
     expect(job.error).toEqual({
       code: "QIDIAN_RANGE_UNAVAILABLE",
-      message:
-        "\u8d77\u70b9\u7b2c2\u7ae0\u4e3aVIP\u6216\u4e0d\u53ef\u4e0b\u8f7d",
+      message: "\u8303\u56f4\u5185\u6ca1\u6709\u53ef\u4e0b\u8f7d\u7684\u8d77\u70b9\u514d\u8d39\u7ae0\u8282",
     });
   });
 
@@ -233,9 +264,26 @@ describe("QidianDownloadRunner", () => {
     expect(job.state).toBe("failed");
     expect(job.error).toEqual({
       code: "QIDIAN_RANGE_UNAVAILABLE",
-      message:
-        "\u8be5\u8d77\u70b9\u4e66\u7c4d\u6ca1\u6709\u53ef\u4e0b\u8f7d\u7684\u514d\u8d39\u7ae0\u8282",
+      message: "\u8303\u56f4\u5185\u6ca1\u6709\u53ef\u4e0b\u8f7d\u7684\u8d77\u70b9\u514d\u8d39\u7ae0\u8282",
     });
+  });
+
+  it("maps a non-Qidian catalog fetch failure to QIDIAN_CATALOG_FETCH_FAILED", async () => {
+    const crawler = {
+      fetchCatalog: jest.fn().mockRejectedValue({ reason: "network down" }),
+      fetchChapter: jest.fn(),
+    };
+    const runner = new QidianDownloadRunner(crawler as never);
+
+    const ref = await runner.createJob({ externalBookId: "1", range: null });
+    const job = await waitForTerminal(runner, ref.id);
+
+    expect(job.state).toBe("failed");
+    expect(job.error).toEqual({
+      code: "QIDIAN_CATALOG_FETCH_FAILED",
+      message: "\u8d77\u70b9\u76ee\u5f55\u6293\u53d6\u5931\u8d25",
+    });
+    expect(crawler.fetchChapter).not.toHaveBeenCalled();
   });
 
   it("uses the Chinese fallback message for non-Qidian failures", async () => {

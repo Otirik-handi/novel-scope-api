@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { Injectable } from "@nestjs/common";
 import { QidianChapterCrawler } from "../../../crawlers/qidian/chapters/qidian-chapter.crawler";
+import type { QidianCatalog } from "../../../crawlers/qidian/chapters/qidian-chapter.crawler";
 import { QidianChapterCrawlerError } from "../../../crawlers/qidian/chapters/qidian-chapter.error";
 import type { QidianCatalogChapter } from "../../../crawlers/qidian/chapters/qidian-catalog.parser";
 import { BookDownloadRunnerError } from "../book-download-runner.interface";
@@ -28,6 +29,22 @@ interface RunningQidianJob {
   createdAtMs: number;
   updatedAtMs: number;
 }
+
+const QIDIAN_ERROR_MESSAGES: Record<string, string> = {
+  QIDIAN_RANGE_INVALID: "\u8d77\u70b9\u7ae0\u8282\u8303\u56f4\u65e0\u6548",
+  QIDIAN_RANGE_UNAVAILABLE:
+    "\u8303\u56f4\u5185\u6ca1\u6709\u53ef\u4e0b\u8f7d\u7684\u8d77\u70b9\u514d\u8d39\u7ae0\u8282",
+  QIDIAN_CATALOG_FETCH_FAILED: "\u8d77\u70b9\u76ee\u5f55\u6293\u53d6\u5931\u8d25",
+  QIDIAN_CATALOG_PARSE_FAILED:
+    "\u8d77\u70b9\u76ee\u5f55\u4e3a\u7a7a\u6216\u65e0\u6cd5\u89e3\u6790",
+  QIDIAN_CHAPTER_FETCH_FAILED: "\u8d77\u70b9\u7ae0\u8282\u6293\u53d6\u5931\u8d25",
+  QIDIAN_CHAPTER_EMPTY:
+    "\u8d77\u70b9\u7ae0\u8282\u6b63\u6587\u7f3a\u5931\u6216\u4e3a\u7a7a",
+  QIDIAN_CHAPTER_ENCRYPTED:
+    "\u8d77\u70b9\u7ae0\u8282\u4e3a\u5b57\u4f53\u52a0\u5bc6\u7ae0\u8282\uff0c\u6682\u4e0d\u652f\u6301\u4e0b\u8f7d",
+  QIDIAN_ACCESS_BLOCKED: "\u8d77\u70b9\u8bbf\u95ee\u53d7\u9650",
+  QIDIAN_JOB_CANCELED: "\u8d77\u70b9\u4e0b\u8f7d\u4efb\u52a1\u5df2\u53d6\u6d88",
+};
 
 @Injectable()
 export class QidianDownloadRunner implements BookDownloadRunner {
@@ -100,10 +117,21 @@ export class QidianDownloadRunner implements BookDownloadRunner {
     job.state = "running";
     job.updatedAtMs = Date.now();
     try {
-      const catalog = await this.crawler.fetchCatalog(
-        job.request.externalBookId,
-        job.controller.signal,
-      );
+      let catalog: QidianCatalog;
+      try {
+        catalog = await this.crawler.fetchCatalog(
+          job.request.externalBookId,
+          job.controller.signal,
+        );
+      } catch (error) {
+        if (getQidianErrorCode(error) !== null) {
+          throw error;
+        }
+        throw new QidianChapterCrawlerError(
+          "QIDIAN_CATALOG_FETCH_FAILED",
+          QIDIAN_ERROR_MESSAGES.QIDIAN_CATALOG_FETCH_FAILED,
+        );
+      }
       const chapters = this.selectRange(catalog.chapters, job.request.range);
       job.title = catalog.title;
       job.author = catalog.author;
@@ -151,7 +179,7 @@ export class QidianDownloadRunner implements BookDownloadRunner {
       if (savedChapters === 0) {
         throw new QidianChapterCrawlerError(
           "QIDIAN_RANGE_UNAVAILABLE",
-          "\u8d77\u70b9\u7ae0\u8282\u4e3aVIP\u6216\u4e0d\u53ef\u4e0b\u8f7d",
+          QIDIAN_ERROR_MESSAGES.QIDIAN_RANGE_UNAVAILABLE,
         );
       }
 
@@ -183,17 +211,21 @@ export class QidianDownloadRunner implements BookDownloadRunner {
       firstVipIndex === null ? chapters.length : firstVipIndex - 1;
 
     if (range !== null) {
-      if (range.startChapter < 1 || range.endChapter > chapters.length) {
+      if (
+        range.startChapter < 1 ||
+        range.endChapter > chapters.length ||
+        range.startChapter > range.endChapter
+      ) {
         throw new QidianChapterCrawlerError(
           "QIDIAN_RANGE_INVALID",
-          "\u8d77\u70b9\u7ae0\u8282\u8303\u56f4\u8d85\u51fa\u76ee\u5f55",
+          QIDIAN_ERROR_MESSAGES.QIDIAN_RANGE_INVALID,
         );
       }
       endIndex = Math.min(endIndex, range.endChapter);
       if (range.startChapter > endIndex) {
         throw new QidianChapterCrawlerError(
           "QIDIAN_RANGE_UNAVAILABLE",
-          `\u8d77\u70b9\u7b2c${range.startChapter}\u7ae0\u4e3aVIP\u6216\u4e0d\u53ef\u4e0b\u8f7d`,
+          QIDIAN_ERROR_MESSAGES.QIDIAN_RANGE_UNAVAILABLE,
         );
       }
       return chapters.filter(
@@ -206,7 +238,7 @@ export class QidianDownloadRunner implements BookDownloadRunner {
     if (endIndex < 1) {
       throw new QidianChapterCrawlerError(
         "QIDIAN_RANGE_UNAVAILABLE",
-        "\u8be5\u8d77\u70b9\u4e66\u7c4d\u6ca1\u6709\u53ef\u4e0b\u8f7d\u7684\u514d\u8d39\u7ae0\u8282",
+        QIDIAN_ERROR_MESSAGES.QIDIAN_RANGE_UNAVAILABLE,
       );
     }
     return chapters.filter((chapter) => chapter.index <= endIndex);
@@ -228,7 +260,7 @@ export class QidianDownloadRunner implements BookDownloadRunner {
     if (job.controller.signal.aborted) {
       throw new QidianChapterCrawlerError(
         "QIDIAN_JOB_CANCELED",
-        "\u8d77\u70b9\u4e0b\u8f7d\u4efb\u52a1\u5df2\u53d6\u6d88",
+        QIDIAN_ERROR_MESSAGES.QIDIAN_JOB_CANCELED,
       );
     }
   }
@@ -250,9 +282,22 @@ export class QidianDownloadRunner implements BookDownloadRunner {
 }
 
 function normalizeError(error: unknown): { code: string; message: string } {
-  if (error instanceof QidianChapterCrawlerError) {
-    return { code: error.code, message: error.message };
+  const code = getQidianErrorCode(error);
+  if (code !== null) {
+    return {
+      code,
+      message:
+        QIDIAN_ERROR_MESSAGES[code] ??
+        QIDIAN_ERROR_MESSAGES.QIDIAN_CHAPTER_FETCH_FAILED,
+    };
   }
+  return {
+    code: "QIDIAN_CHAPTER_FETCH_FAILED",
+    message: QIDIAN_ERROR_MESSAGES.QIDIAN_CHAPTER_FETCH_FAILED,
+  };
+}
+
+function getQidianErrorCode(error: unknown): string | null {
   if (
     typeof error === "object" &&
     error !== null &&
@@ -260,13 +305,7 @@ function normalizeError(error: unknown): { code: string; message: string } {
     typeof error.code === "string" &&
     error.code.startsWith("QIDIAN_")
   ) {
-    return {
-      code: error.code,
-      message: error instanceof Error ? error.message : String(error.code),
-    };
+    return error.code;
   }
-  return {
-    code: "QIDIAN_CHAPTER_FETCH_FAILED",
-    message: error instanceof Error ? error.message : "\u8d77\u70b9\u7ae0\u8282\u6293\u53d6\u5931\u8d25",
-  };
+  return null;
 }
