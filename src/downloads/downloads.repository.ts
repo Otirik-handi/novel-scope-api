@@ -4,7 +4,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../shared/database/prisma.service";
-import type { ChapterRange } from "./runners/fanqie/tomato-downloader/tomato-downloader.contract";
+import type { ChapterRange } from "./runners/book-download-runner.interface";
 
 export type StoredBookDownload = Prisma.BookDownloadGetPayload<{
   include: { book: true };
