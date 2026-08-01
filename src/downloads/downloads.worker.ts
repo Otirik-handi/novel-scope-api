@@ -347,7 +347,7 @@ export class DownloadsWorker
       }
       const unavailable = findUnavailableError(error);
       if (unavailable !== null) throw unavailable;
-      const failureCode =
+      const candidateCode =
         error instanceof TomatoDownloaderClientError &&
         error.code === "NOT_FOUND"
           ? "ARTIFACT_NOT_FOUND"
@@ -356,8 +356,13 @@ export class DownloadsWorker
               "code" in error &&
               typeof error.code === "string"
             ? error.code
-            : "ARTIFACT_STORE_FAILED";
-      await this.fail(task, failureCode, failureMessageFor(failureCode));
+            : null;
+      const failureCode =
+        candidateCode !== null &&
+        Object.hasOwn(FAILURE_MESSAGES, candidateCode)
+          ? (candidateCode as keyof typeof FAILURE_MESSAGES)
+          : "ARTIFACT_STORE_FAILED";
+      await this.fail(task, failureCode, FAILURE_MESSAGES[failureCode]);
       return;
     }
 
@@ -508,7 +513,7 @@ export class DownloadsWorker
 }
 
 function failureMessageFor(code: string): string {
-  return code in FAILURE_MESSAGES
+  return Object.hasOwn(FAILURE_MESSAGES, code)
     ? FAILURE_MESSAGES[code as keyof typeof FAILURE_MESSAGES]
     : FAILURE_MESSAGES.ARTIFACT_STORE_FAILED;
 }

@@ -1217,6 +1217,51 @@ describe("DownloadsWorker", () => {
     });
   });
 
+  it("falls back to ARTIFACT_STORE_FAILED for an unknown error code", async () => {
+    const running = task({ downstreamJobId: "42" });
+    const doneJob = downstreamJob({ state: "done" });
+    const fail = jest.fn();
+    const { worker } = createSubject({
+      repository: {
+        findRecoverable: jest.fn().mockResolvedValue([running]),
+        findById: jest.fn().mockResolvedValue(running),
+        fail,
+      },
+      client: {
+        listJobs: jest.fn().mockResolvedValue([doneJob]),
+        getJob: jest.fn().mockResolvedValue(doneJob),
+        scanLibrary: jest.fn().mockResolvedValue({
+          running: false,
+          items: [
+            {
+              kind: "file",
+              name: "书.txt",
+              relativePath: "book.txt",
+              extension: "txt",
+              sizeBytes: 1,
+              modifiedAtMs: startedAt.getTime(),
+            },
+          ],
+        }),
+        openArtifact: jest.fn().mockRejectedValue(
+          new TomatoDownloaderClientError(
+            "INVALID_RESPONSE",
+            "Downloader returned an invalid response",
+          ),
+        ),
+      },
+    });
+
+    await worker.initialize();
+    await worker.processOnce();
+
+    expect(fail).toHaveBeenCalledWith(running.id, {
+      code: "ARTIFACT_STORE_FAILED",
+      message: "Failed to store downloaded artifact",
+      finishedAt: startedAt,
+    });
+  });
+
   it("interrupts the current sleep during shutdown without canceling the downstream job", async () => {
     let releaseSleep!: () => void;
     let sleepStarted!: () => void;
