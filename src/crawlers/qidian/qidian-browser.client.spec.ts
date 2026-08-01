@@ -140,11 +140,15 @@ describe("QidianBrowserClient", () => {
     });
   });
 
-  it("rejects with request-aborted while creating a browser context", async () => {
-    const context = deferred<unknown>();
+  it("rejects with request-aborted while creating a browser context and closes any created context", async () => {
+    const contextCreation = deferred<unknown>();
+    const context = {
+      newPage: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
     const browser = {
       isConnected: jest.fn().mockReturnValue(true),
-      newContext: jest.fn().mockReturnValue(context.promise),
+      newContext: jest.fn().mockReturnValue(contextCreation.promise),
       close: jest.fn().mockResolvedValue(undefined),
     };
     mockLaunch.mockResolvedValue(browser as never);
@@ -154,12 +158,15 @@ describe("QidianBrowserClient", () => {
 
     await waitForCall(browser.newContext as unknown as jest.Mock);
     controller.abort();
+    contextCreation.resolve(context);
 
     await expect(fetching).rejects.toMatchObject({
       name: "QidianClientError",
       code: "QIDIAN_REQUEST_ABORTED",
       reason: "request-aborted",
     });
+    await waitForCall(context.close as unknown as jest.Mock);
+    expect(context.close).toHaveBeenCalledTimes(1);
   });
 
   it("rejects with request-aborted while creating a page", async () => {

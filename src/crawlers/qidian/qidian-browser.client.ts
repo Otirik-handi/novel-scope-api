@@ -1,5 +1,5 @@
 ﻿import { Injectable, Logger, type OnModuleDestroy } from "@nestjs/common";
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type BrowserContext } from "playwright";
 import { QIDIAN_BASE_URL } from "./qidian.constants";
 import {
   createQidianAbortError,
@@ -43,16 +43,16 @@ export class QidianBrowserClient implements OnModuleDestroy {
       throw createQidianAbortError();
     }
 
-    const browser = await this.withAbort(signal, this.getBrowser());
-    const context = await this.withAbort(
-      signal,
-      browser.newContext({
-        locale: "zh-CN",
-        viewport: { width: 1920, height: 1080 },
-      }),
-    );
+    let context: BrowserContext | null = null;
+    let pendingContext: Promise<BrowserContext> | null = null;
 
     try {
+      const browser = await this.withAbort(signal, this.getBrowser());
+      pendingContext = browser.newContext({
+        locale: "zh-CN",
+        viewport: { width: 1920, height: 1080 },
+      });
+      context = await this.withAbort(signal, pendingContext);
       const page = await this.withAbort(signal, context.newPage());
       this.options.logger.log(`GET ${url.href}`);
       const startedAt = Date.now();
@@ -147,7 +147,13 @@ export class QidianBrowserClient implements OnModuleDestroy {
 
       return { html, sourceUrl };
     } finally {
-      await context.close();
+      if (context !== null) {
+        await context.close();
+      } else if (pendingContext !== null) {
+        void pendingContext
+          .then((createdContext) => createdContext.close())
+          .catch(() => undefined);
+      }
     }
   }
 
