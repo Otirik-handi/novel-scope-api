@@ -7,8 +7,8 @@ describe("FanqieDownloadRunner", () => {
       getJob: jest.fn().mockResolvedValue({
         id: "job-1",
         bookId: "book-1",
-        title: "????",
-        author: "??",
+        title: "Test Novel",
+        author: "Author",
         state: "done",
         message: null,
         progress: null,
@@ -27,13 +27,38 @@ describe("FanqieDownloadRunner", () => {
     ).rejects.toMatchObject({ code: "ARTIFACT_NOT_FOUND" });
   });
 
+  it("rejects an artifact for a job that is not done", async () => {
+    const client = {
+      getJob: jest.fn().mockResolvedValue({
+        id: "job-2",
+        bookId: "book-1",
+        title: "Test Novel",
+        author: "Author",
+        state: "running",
+        message: null,
+        progress: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      }),
+      scanLibrary: jest.fn(),
+      openArtifact: jest.fn(),
+    } as unknown as TomatoDownloaderClient;
+
+    const runner = new FanqieDownloadRunner(client);
+    const task = { id: "download-2", startedAt: new Date("2026-08-01T00:00:00.000Z") };
+
+    await expect(
+      runner.openArtifact("job-2", task, new AbortController().signal),
+    ).rejects.toMatchObject({ code: "ARTIFACT_NOT_FOUND" });
+  });
+
   it("preserves downloader job timestamps", async () => {
     const client = {
       getJob: jest.fn().mockResolvedValue({
         id: "job-1",
         bookId: "book-1",
-        title: "????",
-        author: "??",
+        title: "Test Novel",
+        author: "Author",
         state: "done",
         message: null,
         progress: null,

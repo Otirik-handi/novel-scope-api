@@ -56,7 +56,7 @@ export class FanqieDownloadRunner implements BookDownloadRunner {
     signal: AbortSignal,
   ): Promise<ArtifactSource> {
     const job = await this.getJob(jobId);
-    if (!job?.title) {
+    if (!job || job.state !== "done" || !job.title) {
       throw new BookDownloadRunnerError(
         "ARTIFACT_NOT_FOUND",
         "Downloader artifact was not found",
