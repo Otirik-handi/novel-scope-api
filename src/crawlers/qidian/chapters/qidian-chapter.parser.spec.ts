@@ -56,14 +56,22 @@ describe("QidianChapterParser", () => {
       </script>
     `;
 
-    expect(() =>
+    let error: unknown;
+    try {
       new QidianChapterParser().parse({
         html,
         sourceUrl: "https://www.qidian.com/chapter/1/100/",
         bookId: "1",
         chapterId: "100",
-      }),
-    ).toThrow("QIDIAN_CHAPTER_EMPTY");
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({
+      code: "QIDIAN_CHAPTER_EMPTY",
+      message: "\u8d77\u70b9\u7ae0\u8282\u6b63\u6587\u7f3a\u5931\u6216\u4e3a\u7a7a",
+    });
   });
 
   it("detects vip and encrypted flags", () => {
