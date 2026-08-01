@@ -120,4 +120,119 @@ describe("FanqieDownloadRunner", () => {
       signal,
     );
   });
+
+  it("hides downloader failure details from the error contract", async () => {
+    const client = {
+      getJob: jest.fn().mockResolvedValue({
+        id: "job-4",
+        bookId: "book-1",
+        title: "Test Novel",
+        author: "Author",
+        state: "failed",
+        message: "C:/secret/downloader/path",
+        progress: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      }),
+      listJobs: jest.fn(),
+      createJob: jest.fn(),
+      cancelJob: jest.fn(),
+      scanLibrary: jest.fn(),
+      openArtifact: jest.fn(),
+    } as unknown as TomatoDownloaderClient;
+
+    const runner = new FanqieDownloadRunner(client);
+    const job = await runner.getJob("job-4");
+
+    expect(job?.message).toBe("C:/secret/downloader/path");
+    expect(job?.error).toEqual({
+      code: "DOWNLOADER_REJECTED",
+      message: "Downloader rejected the task",
+    });
+  });
+
+  it("rejects ambiguous artifact candidates", async () => {
+    const signal = new AbortController().signal;
+    const client = {
+      getJob: jest.fn().mockResolvedValue({
+        id: "job-5",
+        bookId: "book-1",
+        title: "Test Novel",
+        author: "Author",
+        state: "done",
+        message: null,
+        progress: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      }),
+      scanLibrary: jest.fn().mockResolvedValue({
+        running: false,
+        items: [
+          {
+            kind: "file",
+            name: "Test Novel.txt",
+            relativePath: "Test Novel.txt",
+            extension: "txt",
+            sizeBytes: 1,
+            modifiedAtMs: Date.now(),
+          },
+          {
+            kind: "file",
+            name: "Test Novel.txt",
+            relativePath: "Test Novel (2).txt",
+            extension: "txt",
+            sizeBytes: 1,
+            modifiedAtMs: Date.now(),
+          },
+        ],
+      }),
+      openArtifact: jest.fn(),
+    } as unknown as TomatoDownloaderClient;
+
+    const runner = new FanqieDownloadRunner(client);
+    const task = { id: "download-5", startedAt: new Date() };
+
+    await expect(
+      runner.openArtifact("job-5", task, signal),
+    ).rejects.toMatchObject({ code: "ARTIFACT_NOT_FOUND" });
+  });
+
+  it("rejects stale artifact candidates", async () => {
+    const signal = new AbortController().signal;
+    const startedAt = new Date("2026-08-01T12:00:00.000Z");
+    const client = {
+      getJob: jest.fn().mockResolvedValue({
+        id: "job-6",
+        bookId: "book-1",
+        title: "Test Novel",
+        author: "Author",
+        state: "done",
+        message: null,
+        progress: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      }),
+      scanLibrary: jest.fn().mockResolvedValue({
+        running: false,
+        items: [
+          {
+            kind: "file",
+            name: "Test Novel.txt",
+            relativePath: "Test Novel.txt",
+            extension: "txt",
+            sizeBytes: 1,
+            modifiedAtMs: startedAt.getTime() - 60_000,
+          },
+        ],
+      }),
+      openArtifact: jest.fn(),
+    } as unknown as TomatoDownloaderClient;
+
+    const runner = new FanqieDownloadRunner(client);
+    const task = { id: "download-6", startedAt };
+
+    await expect(
+      runner.openArtifact("job-6", task, signal),
+    ).rejects.toMatchObject({ code: "ARTIFACT_NOT_FOUND" });
+  });
 });

@@ -137,7 +137,7 @@ function toBookDownloadJob(job: DownloaderJob): BookDownloadJob {
       job.state === "failed"
         ? {
             code: "DOWNLOADER_REJECTED",
-            message: job.message ?? "Downloader rejected the task",
+            message: "Downloader rejected the task",
           }
         : null,
     createdAtMs: job.createdAtMs,
