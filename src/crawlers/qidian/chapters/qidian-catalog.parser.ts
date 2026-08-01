@@ -17,6 +17,11 @@ export interface QidianCatalogParseInput {
 
 export class QidianCatalogParser {
   parse(input: QidianCatalogParseInput): QidianCatalogChapter[] {
+    const requestedBookId = this.parseRequestedBookId(input.sourceUrl);
+    if (requestedBookId === null) {
+      throw this.invalidChapterError();
+    }
+
     const $ = load(input.html);
     const chapters: QidianCatalogChapter[] = [];
 
@@ -24,17 +29,15 @@ export class QidianCatalogParser {
       $(volume).find("li.chapter-item").each((_chapterIndex, li) => {
         const link = $(li).find("a.chapter-name").first();
         const href = link.attr("href") ?? "";
-        const chapterId = this.parseChapterId(href);
-        if (chapterId === null) {
-          throw new QidianChapterCrawlerError(
-            "QIDIAN_CATALOG_PARSE_FAILED",
-            "\u8d77\u70b9\u76ee\u5f55\u4e2d\u5b58\u5728\u65e0\u6548\u7ae0\u8282\u9879",
-          );
+        const title = normalizeHtmlText(link.text());
+        const chapterId = this.parseChapterId(href, requestedBookId);
+        if (chapterId === null || title === "") {
+          throw this.invalidChapterError();
         }
 
         chapters.push({
           index: chapters.length + 1,
-          title: normalizeHtmlText(link.text()),
+          title,
           chapterId,
           sourceUrl: new URL(href, QIDIAN_BASE_URL).href,
           isVip: $(li).find(".chapter-locked").length > 0,
@@ -52,13 +55,41 @@ export class QidianCatalogParser {
     return chapters;
   }
 
-  private parseChapterId(href: string): string | null {
+  private parseRequestedBookId(sourceUrl: string): string | null {
     try {
-      const url = new URL(href, QIDIAN_BASE_URL);
-      return url.pathname.match(/^\/chapter\/\d+\/(\d+)\/?$/)?.[1] ?? null;
+      const url = new URL(sourceUrl, QIDIAN_BASE_URL);
+      return url.origin === QIDIAN_BASE_URL
+        ? url.pathname.match(/^\/book\/(\d+)\/?$/)?.[1] ?? null
+        : null;
     } catch {
       return null;
     }
+  }
+
+  private parseChapterId(href: string, requestedBookId: string): string | null {
+    try {
+      const url = new URL(href, QIDIAN_BASE_URL);
+      const match = url.pathname.match(/^\/chapter\/(\d+)\/(\d+)\/?$/);
+      if (match === null) {
+        return null;
+      }
+
+      return url.origin === QIDIAN_BASE_URL &&
+        url.username === "" &&
+        url.password === "" &&
+        match[1] === requestedBookId
+        ? match[2]
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private invalidChapterError(): QidianChapterCrawlerError {
+    return new QidianChapterCrawlerError(
+      "QIDIAN_CATALOG_PARSE_FAILED",
+      "\u8d77\u70b9\u76ee\u5f55\u4e2d\u5b58\u5728\u65e0\u6548\u7ae0\u8282\u9879",
+    );
   }
 }
 

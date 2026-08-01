@@ -1,4 +1,5 @@
 import { load } from "cheerio";
+import { QIDIAN_BASE_URL } from "../qidian.constants";
 import { QidianChapterCrawlerError } from "./qidian-chapter.error";
 
 export interface QidianChapterParseInput {
@@ -17,6 +18,16 @@ export interface QidianChapterContent {
 
 export class QidianChapterParser {
   parse(input: QidianChapterParseInput): QidianChapterContent {
+    if (
+      !this.matchesRequestedChapter(
+        input.sourceUrl,
+        input.bookId,
+        input.chapterId,
+      )
+    ) {
+      throw this.identityMismatchError();
+    }
+
     const $ = load(input.html);
     const script = $("#vite-plugin-ssr_pageContext").first().html();
     let data: unknown;
@@ -34,6 +45,13 @@ export class QidianChapterParser {
       chapterInfo.content.trim() === ""
     ) {
       throw this.emptyError();
+    }
+
+    if (
+      chapterInfo.chapterId !== undefined &&
+      String(chapterInfo.chapterId) !== input.chapterId
+    ) {
+      throw this.identityMismatchError();
     }
 
     const content = contentToPlainText(chapterInfo.content);
@@ -59,6 +77,33 @@ export class QidianChapterParser {
     return new QidianChapterCrawlerError(
       "QIDIAN_CHAPTER_EMPTY",
       "\u8d77\u70b9\u7ae0\u8282\u6b63\u6587\u7f3a\u5931\u6216\u4e3a\u7a7a",
+    );
+  }
+
+  private matchesRequestedChapter(
+    sourceUrl: string,
+    bookId: string,
+    chapterId: string,
+  ): boolean {
+    try {
+      const url = new URL(sourceUrl);
+      const match = url.pathname.match(/^\/chapter\/(\d+)\/(\d+)\/?$/);
+      return (
+        url.origin === QIDIAN_BASE_URL &&
+        url.username === "" &&
+        url.password === "" &&
+        match?.[1] === bookId &&
+        match?.[2] === chapterId
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private identityMismatchError(): QidianChapterCrawlerError {
+    return new QidianChapterCrawlerError(
+      "QIDIAN_CHAPTER_FETCH_FAILED",
+      "\u8d77\u70b9\u7ae0\u8282\u9875\u4e0e\u8bf7\u6c42\u7ae0\u8282\u4e0d\u4e00\u81f4",
     );
   }
 }
