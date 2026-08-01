@@ -10,6 +10,26 @@
 
 ---
 
+## 执行状态（暂停点）
+
+> 状态更新于 2026-08-01。用户要求暂停执行；此处仅记录完成情况和恢复点，不再继续开发。
+
+- 工作区：`D:\Otirik\Workstation\novel-scope-api\.worktrees\qidian-chapter-download`
+- 分支：`feature/qidian-chapter-download`
+- 当前 HEAD：`39c12ab fix: close qidian browser context after aborted creation`
+- 已完成 Task 1-6，并已通过两阶段 review：
+  - Task 1：`ec88343`
+  - Task 2：`f117c25`
+  - Task 3：`ccb81ff`
+  - Task 4：`ea2f952`
+  - Task 5：`66fb5a7`
+  - Task 6：`39c12ab`
+- 最后验证：单元测试 55 suites / 573 tests 通过；`tsc`、`lint`、`git diff --check` 通过。
+- 尚未执行：Task 7-10。
+- 恢复点：从 Task 7「Repository、Service、Controller 支持 platform」继续；base commit 为 `39c12ab`。
+
+---
+
 ## 实现原则
 
 - 优先完成可运行实现，测试只保留最低限度的关键契约覆盖。
