@@ -131,7 +131,7 @@ function toBookDownloadJob(job: DownloaderJob): BookDownloadJob {
     title: job.title,
     author: job.author,
     state: job.state,
-    message: job.message,
+    message: job.state === "failed" ? null : job.message,
     progress: job.progress === null ? null : { ...job.progress },
     error:
       job.state === "failed"

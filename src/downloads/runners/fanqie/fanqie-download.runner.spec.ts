@@ -144,7 +144,8 @@ describe("FanqieDownloadRunner", () => {
     const runner = new FanqieDownloadRunner(client);
     const job = await runner.getJob("job-4");
 
-    expect(job?.message).toBe("C:/secret/downloader/path");
+    expect(job?.message).toBeNull();
+    expect(JSON.stringify(job)).not.toContain("C:/secret/downloader/path");
     expect(job?.error).toEqual({
       code: "DOWNLOADER_REJECTED",
       message: "Downloader rejected the task",
