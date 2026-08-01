@@ -21,4 +21,39 @@ describe("QidianCatalogParser", () => {
       expect.objectContaining({ index: 2, chapterId: "200", isVip: true }),
     ]);
   });
+
+  it("fails when a chapter item has no valid chapter id", () => {
+    const html = `
+      <div class="catalog-volume">
+        <ul class="volume-chapters">
+          <li class="chapter-item"><a class="chapter-name" href="javascript:void(0)">Broken</a></li>
+        </ul>
+      </div>
+    `;
+
+    expect(() =>
+      new QidianCatalogParser().parse({
+        html,
+        sourceUrl: "https://www.qidian.com/book/1/",
+      }),
+    ).toThrow("QIDIAN_CATALOG_PARSE_FAILED");
+  });
+
+  it("does not skip a broken chapter item after valid items", () => {
+    const html = `
+      <div class="catalog-volume">
+        <ul class="volume-chapters">
+          <li class="chapter-item"><a class="chapter-name" href="//www.qidian.com/chapter/1/100/">Chapter 1</a></li>
+          <li class="chapter-item"><a class="chapter-name" href="javascript:void(0)">Broken</a></li>
+        </ul>
+      </div>
+    `;
+
+    expect(() =>
+      new QidianCatalogParser().parse({
+        html,
+        sourceUrl: "https://www.qidian.com/book/1/",
+      }),
+    ).toThrow("QIDIAN_CATALOG_PARSE_FAILED");
+  });
 });

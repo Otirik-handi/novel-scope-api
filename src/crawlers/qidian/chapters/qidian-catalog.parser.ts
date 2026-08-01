@@ -25,7 +25,12 @@ export class QidianCatalogParser {
         const link = $(li).find("a.chapter-name").first();
         const href = link.attr("href") ?? "";
         const chapterId = this.parseChapterId(href);
-        if (chapterId === null) return;
+        if (chapterId === null) {
+          throw new QidianChapterCrawlerError(
+            "QIDIAN_CATALOG_PARSE_FAILED",
+            "\u8d77\u70b9\u76ee\u5f55\u4e2d\u5b58\u5728\u65e0\u6548\u7ae0\u8282\u9879",
+          );
+        }
 
         chapters.push({
           index: chapters.length + 1,

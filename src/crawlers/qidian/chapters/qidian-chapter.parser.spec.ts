@@ -35,4 +35,65 @@ describe("QidianChapterParser", () => {
       encrypted: false,
     });
   });
+
+  it("rejects empty paragraph content", () => {
+    const html = `
+      <script id="vite-plugin-ssr_pageContext" type="application/json">
+        ${JSON.stringify({
+          pageContext: {
+            pageProps: {
+              pageData: {
+                chapterInfo: {
+                  chapterName: "Empty",
+                  content: "<p></p><p></p>",
+                  vipStatus: 0,
+                  cES: 0,
+                },
+              },
+            },
+          },
+        })}
+      </script>
+    `;
+
+    expect(() =>
+      new QidianChapterParser().parse({
+        html,
+        sourceUrl: "https://www.qidian.com/chapter/1/100/",
+        bookId: "1",
+        chapterId: "100",
+      }),
+    ).toThrow("QIDIAN_CHAPTER_EMPTY");
+  });
+
+  it("detects vip and encrypted flags", () => {
+    const html = `
+      <script id="vite-plugin-ssr_pageContext" type="application/json">
+        ${JSON.stringify({
+          pageContext: {
+            pageProps: {
+              pageData: {
+                chapterInfo: {
+                  chapterName: "Flags",
+                  content: "<p>Text</p>",
+                  vipStatus: 1,
+                  cES: 2,
+                },
+              },
+            },
+          },
+        })}
+      </script>
+    `;
+
+    const result = new QidianChapterParser().parse({
+      html,
+      sourceUrl: "https://www.qidian.com/chapter/1/100/",
+      bookId: "1",
+      chapterId: "100",
+    });
+
+    expect(result.isVip).toBe(true);
+    expect(result.encrypted).toBe(true);
+  });
 });

@@ -6,6 +6,6 @@ export class QidianChapterCrawlerError extends Error {
     message: string,
     options?: ErrorOptions,
   ) {
-    super(message, options);
+    super(`${code}: ${message}`, options);
   }
 }

@@ -36,6 +36,11 @@ export class QidianChapterParser {
       throw this.emptyError();
     }
 
+    const content = contentToPlainText(chapterInfo.content);
+    if (content === "") {
+      throw this.emptyError();
+    }
+
     const title =
       typeof chapterInfo.chapterName === "string" &&
       chapterInfo.chapterName.trim() !== ""
@@ -44,7 +49,7 @@ export class QidianChapterParser {
 
     return {
       title,
-      content: contentToPlainText(chapterInfo.content),
+      content,
       isVip: chapterInfo.vipStatus === 1,
       encrypted: chapterInfo.cES === 2,
     };
@@ -76,5 +81,5 @@ function contentToPlainText(content: string): string {
     .toArray()
     .map((node) => $(node).text().replace(/\s+/g, " ").trim())
     .filter((text) => text.length > 0);
-  return paragraphs.length > 0 ? paragraphs.join("\n") : content.trim();
+  return paragraphs.join("\n");
 }
