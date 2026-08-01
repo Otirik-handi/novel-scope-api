@@ -1172,7 +1172,7 @@ describe("DownloadsWorker", () => {
     expect(client.openArtifact).not.toHaveBeenCalled();
   });
 
-  it("maps a missing artifact downloader 404 to NOT_FOUND", async () => {
+  it("maps a missing artifact downloader 404 to ARTIFACT_NOT_FOUND", async () => {
     const running = task({ downstreamJobId: "42" });
     const doneJob = downstreamJob({ state: "done" });
     const fail = jest.fn();
@@ -1211,7 +1211,7 @@ describe("DownloadsWorker", () => {
     await worker.processOnce();
 
     expect(fail).toHaveBeenCalledWith(running.id, {
-      code: "NOT_FOUND",
+      code: "ARTIFACT_NOT_FOUND",
       message: "Downloader artifact was not found",
       finishedAt: startedAt,
     });

@@ -49,7 +49,6 @@ const FAILURE_MESSAGES = {
   DOWNLOADER_REJECTED: "Downloader rejected the task",
   DOWNSTREAM_TASK_LOST: "Downloader task was lost",
   DOWNLOAD_TIMEOUT: "Download task timed out",
-  NOT_FOUND: "Downloader artifact was not found",
   ARTIFACT_NOT_FOUND: "Downloader artifact was not found",
   ARTIFACT_TOO_LARGE: "Downloaded artifact exceeds the size limit",
   ARTIFACT_INVALID: "Downloader returned an invalid TXT artifact",
@@ -348,15 +347,17 @@ export class DownloadsWorker
       }
       const unavailable = findUnavailableError(error);
       if (unavailable !== null) throw unavailable;
-      const code =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        typeof error.code === "string" &&
-        error.code in FAILURE_MESSAGES
-          ? (error.code as keyof typeof FAILURE_MESSAGES)
-          : "ARTIFACT_STORE_FAILED";
-      await this.fail(task, code);
+      const failureCode =
+        error instanceof TomatoDownloaderClientError &&
+        error.code === "NOT_FOUND"
+          ? "ARTIFACT_NOT_FOUND"
+          : typeof error === "object" &&
+              error !== null &&
+              "code" in error &&
+              typeof error.code === "string"
+            ? error.code
+            : "ARTIFACT_STORE_FAILED";
+      await this.fail(task, failureCode, failureMessageFor(failureCode));
       return;
     }
 
@@ -484,11 +485,12 @@ export class DownloadsWorker
 
   private async fail(
     task: StoredBookDownload,
-    code: keyof typeof FAILURE_MESSAGES,
+    code: string,
+    message = failureMessageFor(code),
   ): Promise<void> {
     await this.repository.fail(task.id, {
       code,
-      message: FAILURE_MESSAGES[code],
+      message,
       finishedAt: this.clock.now(),
     });
     this.activeTaskId = null;
@@ -503,6 +505,12 @@ export class DownloadsWorker
       return false;
     }
   }
+}
+
+function failureMessageFor(code: string): string {
+  return code in FAILURE_MESSAGES
+    ? FAILURE_MESSAGES[code as keyof typeof FAILURE_MESSAGES]
+    : FAILURE_MESSAGES.ARTIFACT_STORE_FAILED;
 }
 
 function findUnavailableError(
