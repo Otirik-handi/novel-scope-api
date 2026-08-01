@@ -2,6 +2,7 @@
 import { ConfigModule, type ConfigType } from "@nestjs/config";
 import crawlerConfig from "../../config/crawler.config";
 import { QidianBookCrawler } from "./books/qidian-book.crawler";
+import { QidianChapterCrawler } from "./chapters/qidian-chapter.crawler";
 import { QidianBrowserClient } from "./qidian-browser.client";
 import { QidianClient } from "./qidian.client";
 import { QidianRankingCatalog } from "./rankings/qidian-ranking.catalog";
@@ -49,11 +50,18 @@ type PageFetcher = {
       useFactory: (client: PageFetcher) =>
         new QidianBookCrawler(client),
     },
+    {
+      provide: QidianChapterCrawler,
+      inject: [QidianBrowserClient],
+      useFactory: (client: QidianBrowserClient) =>
+        new QidianChapterCrawler(client),
+    },
   ],
   exports: [
     QidianRankingCatalog,
     QidianRankingCrawler,
     QidianBookCrawler,
+    QidianChapterCrawler,
   ],
 })
 export class QidianModule {}
