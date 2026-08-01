@@ -6,7 +6,10 @@ import {
   type InternalAxiosRequestConfig,
 } from "axios";
 import iconv from "iconv-lite";
-import { QidianClient } from "./qidian.client";
+import {
+  createQidianAbortError,
+  QidianClient,
+} from "./qidian.client";
 
 const REQUEST_TIMEOUT_MS = 8_000;
 const USER_AGENT = "NovelScope/0.1 test";
@@ -76,6 +79,15 @@ function createRedirectOptions(target: string): Record<string, unknown> {
 }
 
 describe("QidianClient", () => {
+  it("exports a dedicated request-aborted error", () => {
+    expect(createQidianAbortError()).toMatchObject({
+      name: "QidianClientError",
+      code: "QIDIAN_REQUEST_ABORTED",
+      reason: "request-aborted",
+      message: "Qidian request was aborted",
+    });
+  });
+
   it("requests a trusted Qidian URL with bounded arraybuffer settings", async () => {
     const { adapter, requests } = createAdapter();
     const client = createClient(adapter);

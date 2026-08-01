@@ -34,12 +34,14 @@ export interface QidianPage {
 
 export type QidianClientErrorCode =
   | "QIDIAN_ACCESS_BLOCKED"
+  | "QIDIAN_REQUEST_ABORTED"
   | "QIDIAN_UNTRUSTED_URL";
 
 export type QidianAccessBlockReason =
   | "captcha"
   | "login"
-  | "access-denied";
+  | "access-denied"
+  | "request-aborted";
 
 const ACCESS_CONTROL_HTTP_STATUSES = new Set([401, 403, 429]);
 
@@ -54,6 +56,14 @@ export class QidianClientError extends Error {
   ) {
     super(message, options);
   }
+}
+
+export function createQidianAbortError(): QidianClientError {
+  return new QidianClientError(
+    "Qidian request was aborted",
+    "QIDIAN_REQUEST_ABORTED",
+    "request-aborted",
+  );
 }
 
 export class QidianClient {

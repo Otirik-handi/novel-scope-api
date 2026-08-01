@@ -28,6 +28,30 @@ function readStream(stream: NodeJS.ReadableStream): Promise<string> {
   });
 }
 
+async function waitForCall(mock: jest.Mock): Promise<void> {
+  for (let i = 0; i < 100; i += 1) {
+    if (mock.mock.calls.length > 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("timed out waiting for mock call");
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("QidianDownloadRunner", () => {
   it("downloads free chapters and stops at the first vip chapter", async () => {
     const crawler = {
@@ -314,5 +338,111 @@ describe("QidianDownloadRunner", () => {
       code: "QIDIAN_CHAPTER_FETCH_FAILED",
       message: "\u8d77\u70b9\u7ae0\u8282\u6293\u53d6\u5931\u8d25",
     });
+  });
+
+  it("normalizes unknown QIDIAN_ codes to the chapter fetch fallback", async () => {
+    const crawler = {
+      fetchCatalog: jest.fn().mockResolvedValue({
+        bookId: "1",
+        title: "Test Book",
+        author: "Test Author",
+        chapters: [
+          {
+            index: 1,
+            title: "One",
+            chapterId: "100",
+            sourceUrl: "https://www.qidian.com/chapter/1/100/",
+            isVip: false,
+          },
+        ],
+      }),
+      fetchChapter: jest.fn().mockRejectedValue({
+        code: "QIDIAN_UNKNOWN",
+        message: "unknown qidian error",
+      }),
+    };
+    const runner = new QidianDownloadRunner(crawler as never);
+
+    const ref = await runner.createJob({ externalBookId: "1", range: null });
+    const job = await waitForTerminal(runner, ref.id);
+
+    expect(job.state).toBe("failed");
+    expect(job.error).toEqual({
+      code: "QIDIAN_CHAPTER_FETCH_FAILED",
+      message: "\u8d77\u70b9\u7ae0\u8282\u6293\u53d6\u5931\u8d25",
+    });
+  });
+
+  it("marks a job canceled with no error after cancelJob", async () => {
+    const chapter = deferred<{
+      title: string;
+      content: string;
+      isVip: boolean;
+    }>();
+    const crawler = {
+      fetchCatalog: jest.fn().mockResolvedValue({
+        bookId: "1",
+        title: "Test Book",
+        author: "Test Author",
+        chapters: [
+          {
+            index: 1,
+            title: "One",
+            chapterId: "100",
+            sourceUrl: "https://www.qidian.com/chapter/1/100/",
+            isVip: false,
+          },
+        ],
+      }),
+      fetchChapter: jest.fn().mockReturnValue(chapter.promise),
+    };
+    const runner = new QidianDownloadRunner(crawler as never);
+
+    const ref = await runner.createJob({ externalBookId: "1", range: null });
+    await waitForCall(crawler.fetchChapter);
+    await runner.cancelJob(ref.id);
+    chapter.resolve({
+      title: "One",
+      content: "Body text",
+      isVip: false,
+    });
+
+    const job = await waitForTerminal(runner, ref.id);
+
+    expect(job.state).toBe("canceled");
+    expect(job.error).toBeNull();
+    expect(job.message).toBeNull();
+  });
+
+  it("reports numeric timestamps with updatedAtMs after createdAtMs", async () => {
+    const crawler = {
+      fetchCatalog: jest.fn().mockResolvedValue({
+        bookId: "1",
+        title: "Test Book",
+        author: "Test Author",
+        chapters: [
+          {
+            index: 1,
+            title: "One",
+            chapterId: "100",
+            sourceUrl: "https://www.qidian.com/chapter/1/100/",
+            isVip: false,
+          },
+        ],
+      }),
+      fetchChapter: jest.fn().mockResolvedValue({
+        title: "One",
+        content: "Body text",
+        isVip: false,
+      }),
+    };
+    const runner = new QidianDownloadRunner(crawler as never);
+
+    const ref = await runner.createJob({ externalBookId: "1", range: null });
+    const job = await waitForTerminal(runner, ref.id);
+
+    expect(typeof job.createdAtMs).toBe("number");
+    expect(typeof job.updatedAtMs).toBe("number");
+    expect(job.updatedAtMs).toBeGreaterThanOrEqual(job.createdAtMs);
   });
 });

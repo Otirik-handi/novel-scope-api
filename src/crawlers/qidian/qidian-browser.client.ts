@@ -1,7 +1,8 @@
 ﻿import { Injectable, Logger, type OnModuleDestroy } from "@nestjs/common";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser } from "playwright";
 import { QIDIAN_BASE_URL } from "./qidian.constants";
 import {
+  createQidianAbortError,
   QidianClientError,
   type QidianAccessBlockReason,
   type QidianPage,
@@ -13,13 +14,6 @@ export interface QidianBrowserClientOptions {
 }
 
 const ACCESS_CONTROL_HTTP_STATUSES = new Set([401, 403, 429]);
-
-const abortError = () =>
-  new QidianClientError(
-    "Qidian access was blocked",
-    "QIDIAN_ACCESS_BLOCKED",
-    "access-denied",
-  );
 
 @Injectable()
 export class QidianBrowserClient implements OnModuleDestroy {
@@ -46,24 +40,30 @@ export class QidianBrowserClient implements OnModuleDestroy {
     }
 
     if (signal?.aborted) {
-      throw abortError();
+      throw createQidianAbortError();
     }
 
-    const browser = await this.getBrowser();
-    const context = await browser.newContext({
-      locale: "zh-CN",
-      viewport: { width: 1920, height: 1080 },
-    });
+    const browser = await this.withAbort(signal, this.getBrowser());
+    const context = await this.withAbort(
+      signal,
+      browser.newContext({
+        locale: "zh-CN",
+        viewport: { width: 1920, height: 1080 },
+      }),
+    );
 
     try {
-      const page = await context.newPage();
+      const page = await this.withAbort(signal, context.newPage());
       this.options.logger.log(`GET ${url.href}`);
       const startedAt = Date.now();
 
-      const navigation = page.goto(url.href, {
-        timeout: this.options.requestTimeoutMs,
-        waitUntil: "load",
-      }).catch((error: unknown) => {
+      const response = await this.withAbort(
+        signal,
+        page.goto(url.href, {
+          timeout: this.options.requestTimeoutMs,
+          waitUntil: "load",
+        }),
+      ).catch((error: unknown) => {
         const elapsed = Date.now() - startedAt;
         this.options.logger.error(
           `GET ${url.href} failed (${elapsed}ms)`,
@@ -71,27 +71,6 @@ export class QidianBrowserClient implements OnModuleDestroy {
         );
         throw error;
       });
-      let abortListener: (() => void) | undefined;
-      const abortPromise = new Promise<never>((_resolve, reject) => {
-        if (!signal) {
-          return;
-        }
-        abortListener = () => reject(abortError());
-        if (signal.aborted) {
-          abortListener();
-          return;
-        }
-        signal.addEventListener("abort", abortListener, { once: true });
-      });
-      let response: Awaited<ReturnType<Page["goto"]>> | null = null;
-
-      try {
-        response = await Promise.race([navigation, abortPromise]);
-      } finally {
-        if (signal && abortListener) {
-          signal.removeEventListener("abort", abortListener);
-        }
-      }
 
       const elapsed = Date.now() - startedAt;
 
@@ -132,8 +111,8 @@ export class QidianBrowserClient implements OnModuleDestroy {
         throw error;
       }
 
-      const html = await page.content();
-      const title = await page.title();
+      const html = await this.withAbort(signal, page.content());
+      const title = await this.withAbort(signal, page.title());
       const hasSsrScript = html.includes("vite-plugin-ssr_pageContext");
       const hasBookDataScript = html.includes("book-detail-data");
       const hasBookInfo = html.includes("book-information");
@@ -143,21 +122,24 @@ export class QidianBrowserClient implements OnModuleDestroy {
       this.options.logger.log(`content: ${html.length} chars`);
 
       if (hasBookInfo) {
-        const domInfo = await page.evaluate(() => {
-          const root = document.querySelector(".book-information");
-          if (!root) return "no .book-information";
-          const h1 = root.querySelector("h1 em, h1 .book-title, h1");
-          const writer = root.querySelector(".writer, .author .name, [data-author]");
-          const bookId = root.getAttribute("data-book-id");
-          return {
-            bookId,
-            h1Tag: h1?.tagName ?? "none",
-            h1Text: h1?.textContent?.trim().substring(0, 80) ?? "",
-            writerTag: writer?.tagName ?? "none",
-            writerText: writer?.textContent?.trim().substring(0, 40) ?? "",
-            htmlSnippet: root.outerHTML.substring(0, 500),
-          };
-        });
+        const domInfo = await this.withAbort(
+          signal,
+          page.evaluate(() => {
+            const root = document.querySelector(".book-information");
+            if (!root) return "no .book-information";
+            const h1 = root.querySelector("h1 em, h1 .book-title, h1");
+            const writer = root.querySelector(".writer, .author .name, [data-author]");
+            const bookId = root.getAttribute("data-book-id");
+            return {
+              bookId,
+              h1Tag: h1?.tagName ?? "none",
+              h1Text: h1?.textContent?.trim().substring(0, 80) ?? "",
+              writerTag: writer?.tagName ?? "none",
+              writerText: writer?.textContent?.trim().substring(0, 40) ?? "",
+              htmlSnippet: root.outerHTML.substring(0, 500),
+            };
+          }),
+        );
         this.options.logger.log(
           `DOM: ${JSON.stringify(domInfo)}`,
         );
@@ -200,6 +182,31 @@ export class QidianBrowserClient implements OnModuleDestroy {
     }
 
     return this.browserPromise;
+  }
+
+  private async withAbort<T>(
+    signal: AbortSignal | undefined,
+    operation: Promise<T>,
+  ): Promise<T> {
+    if (!signal) {
+      return operation;
+    }
+
+    if (signal.aborted) {
+      throw createQidianAbortError();
+    }
+
+    let abortListener: () => void = () => {};
+    const abortPromise = new Promise<never>((_resolve, reject) => {
+      abortListener = () => reject(createQidianAbortError());
+      signal.addEventListener("abort", abortListener, { once: true });
+    });
+
+    try {
+      return await Promise.race([operation, abortPromise]);
+    } finally {
+      signal.removeEventListener("abort", abortListener);
+    }
   }
 
   private resolveTrustedUrl(pathOrUrl: string): URL {

@@ -283,12 +283,13 @@ export class QidianDownloadRunner implements BookDownloadRunner {
 
 function normalizeError(error: unknown): { code: string; message: string } {
   const code = getQidianErrorCode(error);
-  if (code !== null) {
+  if (
+    code !== null &&
+    Object.prototype.hasOwnProperty.call(QIDIAN_ERROR_MESSAGES, code)
+  ) {
     return {
       code,
-      message:
-        QIDIAN_ERROR_MESSAGES[code] ??
-        QIDIAN_ERROR_MESSAGES.QIDIAN_CHAPTER_FETCH_FAILED,
+      message: QIDIAN_ERROR_MESSAGES[code],
     };
   }
   return {
