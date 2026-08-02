@@ -174,11 +174,13 @@ POST /v1/books/fanqie/7420000000000000000/refresh
 
 该接口跳过 TTL 检查并同步采集。成功时 upsert 详情并返回 `stale: false`；失败时返回安全的 `502`，且不会覆盖最近一次成功数据。
 
-## 创建番茄正文下载任务
+## 创建正文下载任务
 
 ```http
-POST /v1/books/fanqie/:bookId/downloads
+POST /v1/books/:platform/:bookId/downloads
 ```
+
+`platform` 取 `fanqie` 或 `qidian`。旧路由 `POST /v1/books/fanqie/:bookId/downloads` 保留兼容，等价于 `platform=fanqie`。
 
 空对象下载整本：
 
@@ -196,6 +198,21 @@ POST /v1/books/fanqie/:bookId/downloads
 ```
 
 两个范围字段必须同时省略或同时提供，并满足 `1 <= startChapter <= endChapter`。成功返回 `202 Accepted`；每次调用创建独立任务，不做去重。
+
+### 起点免费章节下载
+
+```http
+POST /v1/books/qidian/:bookId/downloads
+```
+
+起点执行器只抓取免费章节，行为如下：
+
+- `startChapter`/`endChapter` 为 1-based 闭区间，按目录的全局顺序编号（跨分卷连续编号，不在卷内重新计数）。
+- 遇到第一个 VIP 章节即停止，已抓取的免费章节仍会生成 TXT；此时 `progress` 带 `stoppedAtChapter` 和 `stopReason: "CHAPTER_VIP"`。
+- 范围起点已是 VIP 章节，或范围内没有任何免费章节时，任务失败并返回 `QIDIAN_RANGE_UNAVAILABLE`。
+- 范围越界或 `startChapter > endChapter` 时返回 `QIDIAN_RANGE_INVALID`。
+
+其他起点错误码：`QIDIAN_CATALOG_FETCH_FAILED`、`QIDIAN_CATALOG_PARSE_FAILED`、`QIDIAN_CHAPTER_FETCH_FAILED`、`QIDIAN_CHAPTER_EMPTY`、`QIDIAN_CHAPTER_ENCRYPTED`（字体加密章节暂不支持）、`QIDIAN_ACCESS_BLOCKED`。
 
 ## 查询正文下载任务
 
@@ -228,7 +245,7 @@ GET /v1/downloads/:downloadId
 }
 ```
 
-状态为 `queued`、`running`、`canceling`、`succeeded`、`failed` 或 `canceled`。失败任务只返回稳定错误码和安全消息，不包含 Downloader 密码、响应正文或内部路径。
+`platform` 回显任务所属平台。状态为 `queued`、`running`、`canceling`、`succeeded`、`failed` 或 `canceled`。失败任务只返回稳定错误码和安全消息，不包含 Downloader 密码、响应正文或内部路径。
 
 ## 下载 TXT
 

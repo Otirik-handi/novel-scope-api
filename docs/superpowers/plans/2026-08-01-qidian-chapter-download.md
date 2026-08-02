@@ -10,23 +10,31 @@
 
 ---
 
-## 执行状态（暂停点）
+## 执行状态
 
-> 状态更新于 2026-08-01。用户要求暂停执行；此处仅记录完成情况和恢复点，不再继续开发。
+> 状态更新于 2026-08-02。Task 1-10 全部完成。
 
 - 工作区：`D:\Otirik\Workstation\novel-scope-api\.worktrees\qidian-chapter-download`
 - 分支：`feature/qidian-chapter-download`
-- 当前 HEAD：`39c12ab fix: close qidian browser context after aborted creation`
-- 已完成 Task 1-6，并已通过两阶段 review：
+- 已完成 Task 1-6（两阶段 review 通过）：
   - Task 1：`ec88343`
   - Task 2：`f117c25`
   - Task 3：`ccb81ff`
   - Task 4：`ea2f952`
   - Task 5：`66fb5a7`
   - Task 6：`39c12ab`
-- 最后验证：单元测试 55 suites / 573 tests 通过；`tsc`、`lint`、`git diff --check` 通过。
-- 尚未执行：Task 7-10。
-- 恢复点：从 Task 7「Repository、Service、Controller 支持 platform」继续；base commit 为 `39c12ab`。
+- Task 7-9 合并为一个提交，Task 10 单独提交。
+- 最终验证：单元测试 55 suites / 580 tests 通过；`lint`、`tsc`、`swagger:compile`、`git diff --check` 通过。
+- 未执行：Task 10 Step 4 手工冒烟（需要真实起点网络访问）。
+
+### 与计划的偏差
+
+1. `interfaces/download.interface.ts` 的 `platform: Platform` 从 Task 9 提前到 Task 7。计划让 Task 7 把 `task.book.platform` 赋给字面量类型 `"fanqie"` 的字段，这在类型上不成立，Task 7 Step 5「无类型错误」按原顺序无法达成。
+2. Prisma 把 `Book.platform` 类型化为 `string`，计划片段直接传给 `resolve(platform: Platform)`。按 `books.repository.ts:32` 既有约定使用 `as Platform`。
+3. `DownloadsRepository.updateProgress` 改收 `Record<string, unknown>` 并在内部转成 `Prisma.InputJsonValue`，避免通用 `BookDownloadJob.progress` 的类型泄漏到 worker。
+4. `displayFilename` 兜底名由 `fanqie-novel` 改为 `novel`，否则起点下载会被打上番茄标签。
+5. worker 测试「stops an artifact library scan after interrupting its sleep」迁移到 `fanqie-download.runner.spec.ts`。扫描轮询已移入 runner 并由 AbortSignal 驱动，原测试的接缝不复存在；runner spec 此前没有中止覆盖。
+6. `runner.openArtifact(jobId, ...)` 只接收 job id，会二次 `getJob` 读取标题，完成时多一次下游请求。改掉需要调整 `BookDownloadRunner` 接口并波及两个 runner，因此保留。
 
 ---
 
