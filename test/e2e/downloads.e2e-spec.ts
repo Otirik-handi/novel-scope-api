@@ -167,12 +167,20 @@ describe("Downloads API (e2e)", () => {
   }
 
   it("claims persisted tasks in FIFO order through the real repository", async () => {
-    const first = await repository.createQueued("7069948840148732967", null);
+    const first = await repository.createQueued(
+      "fanqie",
+      "7069948840148732967",
+      null,
+    );
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const second = await repository.createQueued("7069948840148732968", {
-      startChapter: 2,
-      endChapter: 3,
-    });
+    const second = await repository.createQueued(
+      "fanqie",
+      "7069948840148732968",
+      {
+        startChapter: 2,
+        endChapter: 3,
+      },
+    );
 
     const claimed = await repository.claimNextQueued(new Date());
     expect(claimed?.id).toBe(first.id);

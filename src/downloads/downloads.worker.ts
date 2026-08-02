@@ -5,20 +5,19 @@
   type OnModuleDestroy,
 } from "@nestjs/common";
 import { BookDownloadStatus } from "@prisma/client";
+import type { Platform } from "../shared/types/platform.type";
 import { ArtifactStore } from "./artifact-store";
 import {
   DownloadsRepository,
   type StoredBookDownload,
 } from "./downloads.repository";
-import {
-  TomatoDownloaderClient,
-  TomatoDownloaderClientError,
-} from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
-import {
-  TOMATO_DOWNLOADER_SUPPORTED_VERSION,
-  type DownloaderJob,
-} from "./runners/fanqie/tomato-downloader/tomato-downloader.contract";
-import { downloaderSafeFsName } from "../utils/downloader-filename.util";
+import { BookDownloadRunnerError } from "./runners/book-download-runner.interface";
+import type {
+  BookDownloadJob,
+  BookDownloadRunner,
+} from "./runners/book-download-runner.interface";
+import type { BookDownloadRunnerRegistry } from "./runners/book-download-runner.registry";
+import { TomatoDownloaderClientError } from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
 
 export interface DownloadsWorkerClock {
   now(): Date;
@@ -69,7 +68,7 @@ export class DownloadsWorker
 
   constructor(
     private readonly repository: DownloadsRepository,
-    private readonly client: TomatoDownloaderClient,
+    private readonly runners: BookDownloadRunnerRegistry,
     private readonly artifacts: ArtifactStore,
     private readonly clock: DownloadsWorkerClock,
     private readonly sleeper: DownloadsWorkerSleeper,
@@ -89,13 +88,20 @@ export class DownloadsWorker
 
   async initialize(): Promise<void> {
     await this.artifacts.validateRoot();
-    const [status, config, downstreamJobs, recoverable] = await Promise.all([
-      this.client.getStatus(),
-      this.client.getConfig(),
-      this.client.listJobs(),
+    for (const runner of this.runners.list()) {
+      try {
+        await runner.initialize();
+      } catch (error) {
+        throw new DownloadsWorkerStartupError(
+          error instanceof Error ? error.message : String(error),
+          { cause: error },
+        );
+      }
+    }
+    const [downstreamJobs, recoverable] = await Promise.all([
+      this.listDownstreamJobs(),
       this.repository.findRecoverable(),
     ]);
-    this.assertContract(status.version, config);
     for (const task of recoverable) {
       if (task.downstreamJobId === null) {
         await this.finishMissingTask(task);
@@ -114,7 +120,7 @@ export class DownloadsWorker
         .filter((value): value is string => value !== null),
     );
     const unknownActive = downstreamJobs.find(
-      (job) =>
+      ({ job }) =>
         (job.state === "queued" || job.state === "running") &&
         !knownJobIds.has(job.id),
     );
@@ -128,11 +134,25 @@ export class DownloadsWorker
       this.activeTaskId = null;
       return;
     }
-    if (!downstreamJobs.some((job) => job.id === task.downstreamJobId)) {
+    if (!downstreamJobs.some(({ job }) => job.id === task.downstreamJobId)) {
       await this.finishMissingTask(task);
       return;
     }
     this.activeTaskId = task.id;
+  }
+
+  private async listDownstreamJobs(): Promise<
+    { platform: Platform; job: BookDownloadJob }[]
+  > {
+    const byRunner = await Promise.all(
+      this.runners.list().map(async (runner) => ({
+        platform: runner.platform,
+        jobs: await runner.listJobs(),
+      })),
+    );
+    return byRunner.flatMap((entry) =>
+      entry.jobs.map((job) => ({ platform: entry.platform, job })),
+    );
   }
 
   async processOnce(): Promise<void> {
@@ -158,23 +178,26 @@ export class DownloadsWorker
       return;
     }
 
+    const runner = this.runnerFor(task);
+
     if (task.downstreamJobId === null) {
       let downstream =
         this.uncertainCreateTaskId === task.id
-          ? await this.reconcileUncertainCreate(task)
+          ? await this.reconcileUncertainCreate(task, runner)
           : null;
       if (downstream === null) {
         this.uncertainCreateTaskId = task.id;
         this.uncertainCreateAfterMs = this.clock.now().getTime() - 5_000;
-        downstream = await this.client.createJob(
-          task.book.externalBookId,
-          task.startChapter === null || task.endChapter === null
-            ? null
-            : {
-                startChapter: task.startChapter,
-                endChapter: task.endChapter,
-              },
-        );
+        downstream = await runner.createJob({
+          externalBookId: task.book.externalBookId,
+          range:
+            task.startChapter === null || task.endChapter === null
+              ? null
+              : {
+                  startChapter: task.startChapter,
+                  endChapter: task.endChapter,
+                },
+        });
       }
       const updated = await this.repository.setDownstreamJobId(
         task.id,
@@ -194,10 +217,10 @@ export class DownloadsWorker
       return;
     }
     if (task.status === BookDownloadStatus.CANCELING) {
-      await this.client.cancelJob(downstreamJobId).catch(() => undefined);
+      await runner.cancelJob(downstreamJobId).catch(() => undefined);
     }
 
-    const job = await this.client.getJob(downstreamJobId);
+    const job = await runner.getJob(downstreamJobId);
     if (job === null) {
       await this.finishMissingTask(task);
       return;
@@ -211,12 +234,18 @@ export class DownloadsWorker
       case "running":
         return;
       case "done":
-        await this.complete(task, job);
+        await this.complete(task, job, runner);
         return;
       case "failed":
-        await this.fail(task, "DOWNLOADER_REJECTED");
+        await this.release(runner, job.id);
+        await this.fail(
+          task,
+          job.error?.code ?? "DOWNLOADER_REJECTED",
+          job.error?.message ?? FAILURE_MESSAGES.DOWNLOADER_REJECTED,
+        );
         return;
       case "canceled":
+        await this.release(runner, job.id);
         await this.repository.markCanceled(task.id, this.clock.now());
         this.activeTaskId = null;
     }
@@ -263,26 +292,15 @@ export class DownloadsWorker
     }
   }
 
-  private assertContract(
-    version: string,
-    config: Awaited<ReturnType<TomatoDownloaderClient["getConfig"]>>,
-  ): void {
-    const valid =
-      version === TOMATO_DOWNLOADER_SUPPORTED_VERSION &&
-      config.useOfficialApi &&
-      config.novelFormat === "txt" &&
-      !config.bulkFiles &&
-      !config.enableSegmentComments &&
-      !config.enableAudiobook &&
-      !config.autoOpenDownloadedFiles &&
-      !config.askFormatAfterDownload &&
-      config.preferredBookNameField !== "ask_after_download" &&
-      config.allowOverwriteFiles;
-    if (!valid) {
-      throw new DownloadsWorkerStartupError(
-        "Downloader version or configuration does not satisfy the NovelScope contract",
-      );
-    }
+  private runnerFor(task: StoredBookDownload): BookDownloadRunner {
+    return this.runners.resolve(task.book.platform as Platform);
+  }
+
+  private async release(
+    runner: BookDownloadRunner,
+    jobId: string,
+  ): Promise<void> {
+    await runner.releaseJob(jobId).catch(() => undefined);
   }
 
   private hasTimedOut(task: StoredBookDownload): boolean {
@@ -295,7 +313,9 @@ export class DownloadsWorker
 
   private async timeout(task: StoredBookDownload): Promise<void> {
     if (task.downstreamJobId !== null) {
-      await this.client.cancelJob(task.downstreamJobId).catch(() => undefined);
+      const runner = this.runnerFor(task);
+      await runner.cancelJob(task.downstreamJobId).catch(() => undefined);
+      await this.release(runner, task.downstreamJobId);
     }
     await this.repository.fail(task.id, {
       code: "DOWNLOAD_TIMEOUT",
@@ -307,7 +327,8 @@ export class DownloadsWorker
 
   private async complete(
     task: StoredBookDownload,
-    job: DownloaderJob,
+    job: BookDownloadJob,
+    runner: BookDownloadRunner,
   ): Promise<void> {
     if (!job.title) {
       await this.fail(task, "ARTIFACT_NOT_FOUND");
@@ -317,12 +338,11 @@ export class DownloadsWorker
     let stored: Awaited<ReturnType<ArtifactStore["store"]>> | null = null;
     try {
       signal = this.createTaskSignal(task);
-      const item = await this.findArtifact(job.title, task, signal);
-      if (item === null) {
-        await this.fail(task, "ARTIFACT_NOT_FOUND");
-        return;
-      }
-      const source = await this.client.openArtifact(item.relativePath, signal);
+      const source = await runner.openArtifact(
+        job.id,
+        { id: task.id, startedAt: task.startedAt },
+        signal,
+      );
       stored = await this.artifacts.store(
         task.id,
         source.stream,
@@ -347,32 +367,21 @@ export class DownloadsWorker
       }
       const unavailable = findUnavailableError(error);
       if (unavailable !== null) throw unavailable;
-      const candidateCode =
-        error instanceof TomatoDownloaderClientError &&
-        error.code === "NOT_FOUND"
-          ? "ARTIFACT_NOT_FOUND"
-          : typeof error === "object" &&
-              error !== null &&
-              "code" in error &&
-              typeof error.code === "string"
-            ? error.code
-            : null;
-      const failureCode =
-        candidateCode !== null &&
-        Object.hasOwn(FAILURE_MESSAGES, candidateCode)
-          ? (candidateCode as keyof typeof FAILURE_MESSAGES)
-          : "ARTIFACT_STORE_FAILED";
-      await this.fail(task, failureCode, FAILURE_MESSAGES[failureCode]);
+      const failure = toFailure(error);
+      await this.release(runner, job.id);
+      await this.fail(task, failure.code, failure.message);
       return;
     }
 
-    await this.publishArtifact(task, job.title, stored);
+    await this.publishArtifact(task, job.title, stored, runner, job.id);
   }
 
   private async publishArtifact(
     task: StoredBookDownload,
     title: string,
     stored: Awaited<ReturnType<ArtifactStore["store"]>>,
+    runner: BookDownloadRunner,
+    jobId: string,
   ): Promise<void> {
     let published: StoredBookDownload | null;
     try {
@@ -391,6 +400,7 @@ export class DownloadsWorker
         throw error;
       }
       if (isPublishedArtifact(current, stored)) {
+        await this.release(runner, jobId);
         this.activeTaskId = null;
         return;
       }
@@ -400,12 +410,14 @@ export class DownloadsWorker
     }
 
     if (published !== null) {
+      await this.release(runner, jobId);
       this.activeTaskId = null;
       return;
     }
 
     const current = await this.repository.findById(task.id);
     if (isPublishedArtifact(current, stored)) {
+      await this.release(runner, jobId);
       this.activeTaskId = null;
       return;
     }
@@ -413,41 +425,13 @@ export class DownloadsWorker
     if (!isActiveDownload(current)) this.activeTaskId = null;
   }
 
-  private async findArtifact(
-    title: string,
-    task: StoredBookDownload,
-    signal: AbortSignal,
-  ): Promise<Awaited<ReturnType<TomatoDownloaderClient["scanLibrary"]>>["items"][number] | null> {
-    this.assertWithinDeadline(task);
-    let scan = await this.client.scanLibrary(true, signal);
-    while (scan.running) {
-      this.assertWithinDeadline(task);
-      if (!(await this.sleep(this.options.pollIntervalMs))) {
-        throw new DownloadsWorkerStoppingError();
-      }
-      this.assertWithinDeadline(task);
-      scan = await this.client.scanLibrary(false, signal);
-    }
-    const expected = `${downloaderSafeFsName(title)}.txt`;
-    const earliest = (task.startedAt ?? this.clock.now()).getTime() - 5_000;
-    const candidates = scan.items.filter(
-      (item) =>
-        item.kind === "file" &&
-        !/[\\/]/.test(item.relativePath) &&
-        item.extension.toLowerCase() === "txt" &&
-        item.name === expected &&
-        item.modifiedAtMs !== null &&
-        item.modifiedAtMs >= earliest,
-    );
-    return candidates.length === 1 ? candidates[0]! : null;
-  }
-
   private async reconcileUncertainCreate(
     task: StoredBookDownload,
+    runner: BookDownloadRunner,
   ): Promise<{ id: string } | null> {
-    const candidates = (await this.client.listJobs()).filter(
+    const candidates = (await runner.listJobs()).filter(
       (job) =>
-        job.bookId === task.book.externalBookId &&
+        job.externalBookId === task.book.externalBookId &&
         job.createdAtMs >= this.uncertainCreateAfterMs,
     );
     if (candidates.length > 1) {
@@ -480,6 +464,9 @@ export class DownloadsWorker
   }
 
   private async finishMissingTask(task: StoredBookDownload): Promise<void> {
+    if (task.downstreamJobId !== null) {
+      await this.release(this.runnerFor(task), task.downstreamJobId);
+    }
     if (task.status === BookDownloadStatus.CANCELING) {
       await this.repository.markCanceled(task.id, this.clock.now());
       this.activeTaskId = null;
@@ -516,6 +503,26 @@ function failureMessageFor(code: string): string {
   return Object.hasOwn(FAILURE_MESSAGES, code)
     ? FAILURE_MESSAGES[code as keyof typeof FAILURE_MESSAGES]
     : FAILURE_MESSAGES.ARTIFACT_STORE_FAILED;
+}
+
+function toFailure(error: unknown): { code: string; message: string } {
+  if (error instanceof BookDownloadRunnerError) {
+    return { code: error.code, message: error.message };
+  }
+  const code =
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+      ? error.code
+      : null;
+  if (code !== null && Object.hasOwn(FAILURE_MESSAGES, code)) {
+    return { code, message: failureMessageFor(code) };
+  }
+  return {
+    code: "ARTIFACT_STORE_FAILED",
+    message: FAILURE_MESSAGES.ARTIFACT_STORE_FAILED,
+  };
 }
 
 function findUnavailableError(
@@ -557,7 +564,7 @@ function isPublishedArtifact(
 }
 
 function displayFilename(title: string, task: StoredBookDownload): string {
-  const safeTitle = title.replace(/[\\/:*?"<>|]/g, "_").trim() || "fanqie-novel";
+  const safeTitle = title.replace(/[\\/:*?"<>|]/g, "_").trim() || "novel";
   if (task.startChapter !== null && task.endChapter !== null) {
     return `${safeTitle}_第${task.startChapter}-${task.endChapter}章.txt`;
   }

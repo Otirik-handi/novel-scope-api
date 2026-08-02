@@ -28,6 +28,38 @@ describe("FanqieDownloadRunner", () => {
     ).rejects.toMatchObject({ code: "ARTIFACT_NOT_FOUND" });
   });
 
+  it("stops a running library scan when the task signal aborts", async () => {
+    const controller = new AbortController();
+    const scanLibrary = jest.fn().mockImplementation(async () => {
+      controller.abort();
+      return { running: true, items: [] };
+    });
+    const client = {
+      getJob: jest.fn().mockResolvedValue({
+        id: "job-9",
+        bookId: "book-1",
+        title: "Test Novel",
+        author: "Author",
+        state: "done",
+        message: null,
+        progress: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      }),
+      scanLibrary,
+      openArtifact: jest.fn(),
+    } as unknown as TomatoDownloaderClient;
+
+    const runner = new FanqieDownloadRunner(client);
+    const task = { id: "download-9", startedAt: new Date() };
+
+    await expect(
+      runner.openArtifact("job-9", task, controller.signal),
+    ).rejects.toThrow();
+    expect(scanLibrary).toHaveBeenCalledTimes(1);
+    expect(client.openArtifact).not.toHaveBeenCalled();
+  });
+
   it("maps downloader 404 to ARTIFACT_NOT_FOUND", async () => {
     const signal = new AbortController().signal;
     const client = {

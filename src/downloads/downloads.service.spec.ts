@@ -8,7 +8,8 @@ import {
   DownloadNotFoundError,
   DownloadsService,
 } from "./downloads.service";
-import type { TomatoDownloaderClient } from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
+import type { BookDownloadRunner } from "./runners/book-download-runner.interface";
+import { BookDownloadRunnerRegistry } from "./runners/book-download-runner.registry";
 
 const now = new Date("2026-07-26T12:00:00.000Z");
 
@@ -44,7 +45,6 @@ function task(overrides: Record<string, unknown> = {}) {
 
 function createSubject(overrides: {
   repository?: Partial<DownloadsRepository>;
-  client?: Partial<TomatoDownloaderClient>;
   artifacts?: Partial<ArtifactStore>;
 } = {}) {
   const repository = {
@@ -55,7 +55,12 @@ function createSubject(overrides: {
     deleteTerminal: jest.fn(),
     ...overrides.repository,
   };
-  const client = { cancelJob: jest.fn(), ...overrides.client };
+  const fanqieRunner = { platform: "fanqie", cancelJob: jest.fn() };
+  const qidianRunner = { platform: "qidian", cancelJob: jest.fn() };
+  const runners = new BookDownloadRunnerRegistry(
+    fanqieRunner as unknown as BookDownloadRunner,
+    qidianRunner as unknown as BookDownloadRunner,
+  );
   const artifacts = {
     open: jest.fn(),
     delete: jest.fn(),
@@ -64,12 +69,13 @@ function createSubject(overrides: {
   return {
     service: new DownloadsService(
       repository as unknown as DownloadsRepository,
-      client as unknown as TomatoDownloaderClient,
+      runners,
       artifacts as unknown as ArtifactStore,
       { now: () => now },
     ),
     repository,
-    client,
+    fanqieRunner,
+    qidianRunner,
     artifacts,
   };
 }
@@ -82,7 +88,7 @@ describe("DownloadsService", () => {
     });
 
     await expect(
-      service.create("7069948840148732967", {
+      service.create("fanqie", "7069948840148732967", {
         startChapter: 20,
         endChapter: 30,
       }),
@@ -97,8 +103,31 @@ describe("DownloadsService", () => {
       error: null,
     });
     expect(repository.createQueued).toHaveBeenCalledWith(
+      "fanqie",
       "7069948840148732967",
       { startChapter: 20, endChapter: 30 },
+    );
+  });
+
+  it("creates a qidian task on the requested platform", async () => {
+    const stored = task({
+      book: { ...task().book, platform: "qidian", externalBookId: "1043182343" },
+    });
+    const { service, repository } = createSubject({
+      repository: { createQueued: jest.fn().mockResolvedValue(stored) },
+    });
+
+    await expect(
+      service.create("qidian", "1043182343", {}),
+    ).resolves.toMatchObject({
+      platform: "qidian",
+      externalBookId: "1043182343",
+      range: null,
+    });
+    expect(repository.createQueued).toHaveBeenCalledWith(
+      "qidian",
+      "1043182343",
+      null,
     );
   });
 
@@ -113,7 +142,7 @@ describe("DownloadsService", () => {
 
   it("cancels a queued task atomically", async () => {
     const canceled = task({ status: BookDownloadStatus.CANCELED, finishedAt: now });
-    const { service, repository, client } = createSubject({
+    const { service, repository, fanqieRunner } = createSubject({
       repository: {
         findById: jest.fn().mockResolvedValue(task()),
         cancelQueued: jest.fn().mockResolvedValue(canceled),
@@ -124,7 +153,7 @@ describe("DownloadsService", () => {
       status: "canceled",
     });
     expect(repository.cancelQueued).toHaveBeenCalledWith(task().id, now);
-    expect(client.cancelJob).not.toHaveBeenCalled();
+    expect(fanqieRunner.cancelJob).not.toHaveBeenCalled();
   });
 
   it("marks a running task canceling before calling Downloader", async () => {
@@ -137,7 +166,7 @@ describe("DownloadsService", () => {
       ...running,
       status: BookDownloadStatus.CANCELING,
     });
-    const { service, repository, client } = createSubject({
+    const { service, repository, fanqieRunner } = createSubject({
       repository: {
         findById: jest.fn().mockResolvedValue(running),
         markCanceling: jest.fn().mockResolvedValue(canceling),
@@ -148,7 +177,33 @@ describe("DownloadsService", () => {
       status: "canceling",
     });
     expect(repository.markCanceling).toHaveBeenCalledWith(running.id);
-    expect(client.cancelJob).toHaveBeenCalledWith("42");
+    expect(fanqieRunner.cancelJob).toHaveBeenCalledWith("42");
+  });
+
+  it("cancels a running task through the runner of its own platform", async () => {
+    const running = task({
+      status: BookDownloadStatus.RUNNING,
+      downstreamJobId: "qidian-7",
+      startedAt: now,
+      book: { ...task().book, platform: "qidian" },
+    });
+    const { service, fanqieRunner, qidianRunner } = createSubject({
+      repository: {
+        findById: jest.fn().mockResolvedValue(running),
+        markCanceling: jest
+          .fn()
+          .mockResolvedValue(
+            task({ ...running, status: BookDownloadStatus.CANCELING }),
+          ),
+      },
+    });
+
+    await expect(service.cancel(running.id)).resolves.toMatchObject({
+      platform: "qidian",
+      status: "canceling",
+    });
+    expect(qidianRunner.cancelJob).toHaveBeenCalledWith("qidian-7");
+    expect(fanqieRunner.cancelJob).not.toHaveBeenCalled();
   });
 
   it("rejects canceling a terminal task", async () => {

@@ -2,6 +2,8 @@
 import { ConfigModule, type ConfigType } from "@nestjs/config";
 import { setTimeout as sleep } from "node:timers/promises";
 import downloadConfig from "../config/download.config";
+import { CrawlersModule } from "../crawlers/crawlers.module";
+import { QidianChapterCrawler } from "../crawlers/qidian/chapters/qidian-chapter.crawler";
 import { DatabaseModule } from "../shared/database/database.module";
 import { ArtifactStore } from "./artifact-store";
 import { DownloadsController } from "./downloads.controller";
@@ -12,13 +14,20 @@ import {
   type DownloadsWorkerClock,
   type DownloadsWorkerSleeper,
 } from "./downloads.worker";
+import { BookDownloadRunnerRegistry } from "./runners/book-download-runner.registry";
+import { FanqieDownloadRunner } from "./runners/fanqie/fanqie-download.runner";
+import { QidianDownloadRunner } from "./runners/qidian/qidian-download.runner";
 import { TomatoDownloaderClient } from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
 
 export const DOWNLOADS_CLOCK = Symbol("DOWNLOADS_CLOCK");
 export const DOWNLOADS_SLEEPER = Symbol("DOWNLOADS_SLEEPER");
 
 @Module({
-  imports: [ConfigModule.forFeature(downloadConfig), DatabaseModule],
+  imports: [
+    ConfigModule.forFeature(downloadConfig),
+    DatabaseModule,
+    CrawlersModule,
+  ],
   controllers: [DownloadsController],
   providers: [
     DownloadsRepository,
@@ -39,6 +48,26 @@ export const DOWNLOADS_SLEEPER = Symbol("DOWNLOADS_SLEEPER");
         new ArtifactStore({ rootDirectory: config.artifactDirectory }),
     },
     {
+      provide: FanqieDownloadRunner,
+      inject: [TomatoDownloaderClient],
+      useFactory: (client: TomatoDownloaderClient) =>
+        new FanqieDownloadRunner(client),
+    },
+    {
+      provide: QidianDownloadRunner,
+      inject: [QidianChapterCrawler],
+      useFactory: (crawler: QidianChapterCrawler) =>
+        new QidianDownloadRunner(crawler),
+    },
+    {
+      provide: BookDownloadRunnerRegistry,
+      inject: [FanqieDownloadRunner, QidianDownloadRunner],
+      useFactory: (
+        fanqie: FanqieDownloadRunner,
+        qidian: QidianDownloadRunner,
+      ) => new BookDownloadRunnerRegistry(fanqie, qidian),
+    },
+    {
       provide: DOWNLOADS_CLOCK,
       useValue: { now: () => new Date() } satisfies DownloadsWorkerClock,
     },
@@ -53,22 +82,22 @@ export const DOWNLOADS_SLEEPER = Symbol("DOWNLOADS_SLEEPER");
       provide: DownloadsService,
       inject: [
         DownloadsRepository,
-        TomatoDownloaderClient,
+        BookDownloadRunnerRegistry,
         ArtifactStore,
         DOWNLOADS_CLOCK,
       ],
       useFactory: (
         repository: DownloadsRepository,
-        client: TomatoDownloaderClient,
+        runners: BookDownloadRunnerRegistry,
         artifacts: ArtifactStore,
         clock: DownloadsWorkerClock,
-      ) => new DownloadsService(repository, client, artifacts, clock),
+      ) => new DownloadsService(repository, runners, artifacts, clock),
     },
     {
       provide: DownloadsWorker,
       inject: [
         DownloadsRepository,
-        TomatoDownloaderClient,
+        BookDownloadRunnerRegistry,
         ArtifactStore,
         DOWNLOADS_CLOCK,
         DOWNLOADS_SLEEPER,
@@ -76,13 +105,13 @@ export const DOWNLOADS_SLEEPER = Symbol("DOWNLOADS_SLEEPER");
       ],
       useFactory: (
         repository: DownloadsRepository,
-        client: TomatoDownloaderClient,
+        runners: BookDownloadRunnerRegistry,
         artifacts: ArtifactStore,
         clock: DownloadsWorkerClock,
         sleeper: DownloadsWorkerSleeper,
         config: ConfigType<typeof downloadConfig>,
       ) =>
-        new DownloadsWorker(repository, client, artifacts, clock, sleeper, {
+        new DownloadsWorker(repository, runners, artifacts, clock, sleeper, {
           pollIntervalMs: config.pollIntervalMs,
           taskTimeoutMs: config.taskTimeoutMs,
         }),

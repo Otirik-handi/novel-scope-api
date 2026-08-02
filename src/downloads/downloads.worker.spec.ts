@@ -10,6 +10,8 @@ import {
   TomatoDownloaderClientError,
   type TomatoDownloaderClient,
 } from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
+import { BookDownloadRunnerRegistry } from "./runners/book-download-runner.registry";
+import { FanqieDownloadRunner } from "./runners/fanqie/fanqie-download.runner";
 
 const startedAt = new Date("2026-07-26T12:00:00.000Z");
 
@@ -113,15 +115,19 @@ function createSubject(overrides: {
   const sleeper = overrides.sleeper ?? {
     sleep: jest.fn().mockResolvedValue(undefined),
   };
+  const runner = new FanqieDownloadRunner(
+    client as unknown as TomatoDownloaderClient,
+  );
+  const runners = new BookDownloadRunnerRegistry(runner);
   const worker = new DownloadsWorker(
     repository as unknown as DownloadsRepository,
-    client as unknown as TomatoDownloaderClient,
+    runners,
     artifacts as unknown as ArtifactStore,
     clock,
     sleeper,
     { pollIntervalMs: 1_000, taskTimeoutMs: 7_200_000 },
   );
-  return { worker, repository, client, artifacts, sleeper };
+  return { worker, repository, client, artifacts, sleeper, runner, runners };
 }
 
 describe("DownloadsWorker", () => {
@@ -671,7 +677,7 @@ describe("DownloadsWorker", () => {
     await expect(worker.processOnce()).resolves.toBeUndefined();
 
     expect(findById).toHaveBeenCalledTimes(3);
-    expect(getJob).toHaveBeenCalledTimes(1);
+    expect(getJob).toHaveBeenCalledTimes(2);
     expect(deleteArtifact).not.toHaveBeenCalled();
     expect(fail).not.toHaveBeenCalled();
   });
@@ -821,7 +827,9 @@ describe("DownloadsWorker", () => {
     const artifacts = { validateRoot: jest.fn().mockResolvedValue(undefined) };
     const worker = new DownloadsWorker(
       repository as unknown as DownloadsRepository,
-      client as unknown as TomatoDownloaderClient,
+      new BookDownloadRunnerRegistry(
+        new FanqieDownloadRunner(client as unknown as TomatoDownloaderClient),
+      ),
       artifacts as unknown as ArtifactStore,
       { now: () => startedAt },
       sleeper,
@@ -1303,54 +1311,6 @@ describe("DownloadsWorker", () => {
 
     expect(closedWithoutRelease).toBe(true);
     expect(closeError).toBeUndefined();
-    expect(client.cancelJob).not.toHaveBeenCalled();
-  });
-
-  it("stops an artifact library scan after interrupting its sleep", async () => {
-    const running = task({ downstreamJobId: "42" });
-    const doneJob = downstreamJob({ state: "done" });
-    let sleepStarted!: () => void;
-    const startedSleeping = new Promise<void>((resolve) => {
-      sleepStarted = resolve;
-    });
-    const sleeper = {
-      sleep: jest.fn(
-        (_milliseconds: number, signal?: AbortSignal) =>
-          new Promise<void>((_resolve, reject) => {
-            signal?.addEventListener(
-              "abort",
-              () => reject(new Error("sleep aborted")),
-              { once: true },
-            );
-            sleepStarted();
-          }),
-      ),
-    };
-    const scanLibrary = jest
-      .fn()
-      .mockResolvedValueOnce({ running: true, items: [] })
-      .mockResolvedValue({ running: false, items: [] });
-    const fail = jest.fn();
-    const { worker, client } = createSubject({
-      sleeper,
-      repository: {
-        findRecoverable: jest.fn().mockResolvedValue([running]),
-        findById: jest.fn().mockResolvedValue(running),
-        fail,
-      },
-      client: {
-        listJobs: jest.fn().mockResolvedValue([doneJob]),
-        getJob: jest.fn().mockResolvedValue(doneJob),
-        scanLibrary,
-      },
-    });
-
-    await worker.onApplicationBootstrap();
-    await startedSleeping;
-    await worker.onModuleDestroy();
-
-    expect(scanLibrary).toHaveBeenCalledTimes(1);
-    expect(fail).not.toHaveBeenCalled();
     expect(client.cancelJob).not.toHaveBeenCalled();
   });
 

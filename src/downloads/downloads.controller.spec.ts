@@ -7,6 +7,7 @@
 import { validate } from "class-validator";
 import { Readable } from "node:stream";
 import { CreateBookDownloadDto } from "./dto/create-book-download.dto";
+import { PlatformBookDownloadParamsDto } from "./dto/platform-book-download-params.dto";
 import { DownloadsController } from "./downloads.controller";
 import {
   DownloadArtifactGoneError,
@@ -39,6 +40,26 @@ describe("download DTO", () => {
   });
 });
 
+describe("platform download params DTO", () => {
+  it.each([
+    { platform: "qidian", bookId: "1043182343" },
+    { platform: "fanqie", bookId: "7069948840148732967" },
+  ])("accepts a supported platform %p", async (params) => {
+    await expect(
+      validate(Object.assign(new PlatformBookDownloadParamsDto(), params)),
+    ).resolves.toHaveLength(0);
+  });
+
+  it.each([
+    { platform: "unknown", bookId: "1043182343" },
+    { platform: "qidian", bookId: "abc" },
+  ])("rejects invalid params %p", async (params) => {
+    await expect(
+      validate(Object.assign(new PlatformBookDownloadParamsDto(), params)),
+    ).resolves.not.toHaveLength(0);
+  });
+});
+
 describe("DownloadsController", () => {
   function createSubject() {
     const service = {
@@ -59,8 +80,23 @@ describe("DownloadsController", () => {
     const resource = { id: "download-1", status: "queued" };
     service.create.mockResolvedValue(resource);
     await expect(
-      controller.create({ bookId: "7069948840148732967" }, {}),
+      controller.create({ platform: "qidian", bookId: "1043182343" }, {}),
     ).resolves.toBe(resource);
+    expect(service.create).toHaveBeenCalledWith("qidian", "1043182343", {});
+  });
+
+  it("keeps the legacy fanqie route pinned to the fanqie platform", async () => {
+    const { controller, service } = createSubject();
+    const resource = { id: "download-1", status: "queued" };
+    service.create.mockResolvedValue(resource);
+    await expect(
+      controller.createFanqie({ bookId: "7069948840148732967" }, {}),
+    ).resolves.toBe(resource);
+    expect(service.create).toHaveBeenCalledWith(
+      "fanqie",
+      "7069948840148732967",
+      {},
+    );
   });
 
   it.each([

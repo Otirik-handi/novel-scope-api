@@ -4,6 +4,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../shared/database/prisma.service";
+import type { Platform } from "../shared/types/platform.type";
 import type { ChapterRange } from "./runners/book-download-runner.interface";
 
 export type StoredBookDownload = Prisma.BookDownloadGetPayload<{
@@ -40,17 +41,18 @@ export class DownloadsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async createQueued(
+    platform: Platform,
     externalBookId: string,
     range: ChapterRange | null,
   ): Promise<StoredBookDownload> {
     return this.prisma.$transaction(async (transaction) => {
       await transaction.book.createMany({
-        data: [{ platform: "fanqie", externalBookId }],
+        data: [{ platform, externalBookId }],
         skipDuplicates: true,
       });
       const book = await transaction.book.findUniqueOrThrow({
         where: {
-          platform_externalBookId: { platform: "fanqie", externalBookId },
+          platform_externalBookId: { platform, externalBookId },
         },
         select: { id: true },
       });
@@ -118,9 +120,11 @@ export class DownloadsRepository {
 
   async updateProgress(
     id: string,
-    progress: Prisma.InputJsonValue,
+    progress: Record<string, unknown>,
   ): Promise<StoredBookDownload | null> {
-    return this.updateActive(id, { progress });
+    return this.updateActive(id, {
+      progress: progress as Prisma.InputJsonValue,
+    });
   }
 
   async cancelQueued(

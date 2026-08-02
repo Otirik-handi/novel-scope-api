@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { BookDownloadStatus } from "@prisma/client";
+import type { Platform } from "../shared/types/platform.type";
 import type { ArtifactStore } from "./artifact-store";
 import type {
   DownloadResource,
@@ -10,8 +11,8 @@ import {
   DownloadsRepository,
   type StoredBookDownload,
 } from "./downloads.repository";
-import type { TomatoDownloaderClient } from "./runners/fanqie/tomato-downloader/tomato-downloader.client";
-import type { ChapterRange } from "./runners/fanqie/tomato-downloader/tomato-downloader.contract";
+import type { ChapterRange } from "./runners/book-download-runner.interface";
+import type { BookDownloadRunnerRegistry } from "./runners/book-download-runner.registry";
 
 export class DownloadNotFoundError extends Error {
   override readonly name = "DownloadNotFoundError";
@@ -38,12 +39,13 @@ export class DownloadArtifactGoneError extends Error {
 export class DownloadsService {
   constructor(
     private readonly repository: DownloadsRepository,
-    private readonly client: TomatoDownloaderClient,
+    private readonly runners: BookDownloadRunnerRegistry,
     private readonly artifacts: ArtifactStore,
     private readonly clock: DownloadsClock,
   ) {}
 
   async create(
+    platform: Platform,
     externalBookId: string,
     range: Partial<ChapterRange>,
   ): Promise<DownloadResource> {
@@ -55,7 +57,11 @@ export class DownloadsService {
           }
         : null;
     return this.toResource(
-      await this.repository.createQueued(externalBookId, normalizedRange),
+      await this.repository.createQueued(
+        platform,
+        externalBookId,
+        normalizedRange,
+      ),
     );
   }
 
@@ -79,9 +85,11 @@ export class DownloadsService {
     const canceling = await this.repository.markCanceling(id);
     if (canceling === null) throw new DownloadConflictError();
     if (task.downstreamJobId !== null) {
-      await Promise.resolve(this.client.cancelJob(task.downstreamJobId)).catch(
-        () => undefined,
-      );
+      await Promise.resolve(
+        this.runners
+          .resolve(task.book.platform as Platform)
+          .cancelJob(task.downstreamJobId),
+      ).catch(() => undefined);
     }
     return this.toResource(canceling);
   }
@@ -154,7 +162,7 @@ export class DownloadsService {
         : null;
     return {
       id: task.id,
-      platform: "fanqie",
+      platform: task.book.platform as Platform,
       externalBookId: task.book.externalBookId,
       format: "txt",
       range:
