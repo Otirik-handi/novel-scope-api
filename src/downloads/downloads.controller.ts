@@ -16,6 +16,7 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CreateBookDownloadDto } from "./dto/create-book-download.dto";
 import { DownloadIdParamsDto } from "./dto/download-id-params.dto";
 import { FanqieDownloadBookParamsDto } from "./dto/fanqie-download-book-params.dto";
+import { PlatformBookDownloadParamsDto } from "./dto/platform-book-download-params.dto";
 import type { DownloadResource } from "./interfaces/download.interface";
 import {
   DownloadArtifactGoneError,
@@ -31,12 +32,24 @@ export class DownloadsController {
 
   @Post("books/fanqie/:bookId/downloads")
   @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({ summary: "创建番茄正文下载任务" })
-  async create(
+  @ApiOperation({ summary: "创建番茄正文下载任务（兼容）" })
+  async createFanqie(
     @Param() params: FanqieDownloadBookParamsDto,
     @Body() body: CreateBookDownloadDto,
   ): Promise<DownloadResource> {
-    return this.execute(() => this.service.create(params.bookId, body));
+    return this.execute(() => this.service.create("fanqie", params.bookId, body));
+  }
+
+  @Post("books/:platform/:bookId/downloads")
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: "创建正文下载任务" })
+  async create(
+    @Param() params: PlatformBookDownloadParamsDto,
+    @Body() body: CreateBookDownloadDto,
+  ): Promise<DownloadResource> {
+    return this.execute(() =>
+      this.service.create(params.platform, params.bookId, body),
+    );
   }
 
   @Get("downloads/:downloadId")

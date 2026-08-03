@@ -281,6 +281,43 @@ $rangeDownload | Select-Object id, status, range
 
 把 `$rangeDownload.id` 赋给 `$downloadId`，即可复用上一节的轮询和文件下载命令。
 
+## 11.1 下载起点免费章节
+
+起点使用同一套下载接口，只需把路径中的平台换成 `qidian`：
+
+```powershell
+$qidianBookId = "1043182343"
+$qidianBody = @{ startChapter = 1; endChapter = 3 } | ConvertTo-Json
+$qidianDownload = Invoke-RestMethod `
+  -Method Post `
+  -Uri "$baseUrl/v1/books/qidian/$qidianBookId/downloads" `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $qidianBody
+
+$qidianDownload | Select-Object id, platform, status, range
+```
+
+把 `$qidianDownload.id` 赋给 `$downloadId` 后，轮询、下载 TXT、取消和删除的命令与番茄流程完全一致。
+
+起点执行器只抓取免费章节，使用时注意：
+
+- 章节序号按目录的全局顺序编号，跨分卷连续计数。
+- 遇到第一个 VIP 章节即停止，已抓取的免费章节仍会生成 TXT，`progress` 中带 `stoppedAtChapter` 和 `stopReason`。
+- 范围起点已是 VIP 章节，或范围内没有免费章节时，任务以 `QIDIAN_RANGE_UNAVAILABLE` 失败。
+- 字体加密章节暂不支持，会以 `QIDIAN_CHAPTER_ENCRYPTED` 失败。
+
+省略 `startChapter`/`endChapter` 时下载全部免费章节：
+
+```powershell
+$qidianAll = Invoke-RestMethod `
+  -Method Post `
+  -Uri "$baseUrl/v1/books/qidian/$qidianBookId/downloads" `
+  -ContentType "application/json; charset=utf-8" `
+  -Body "{}"
+
+$qidianAll | Select-Object id, platform, status
+```
+
 ## 12. 管理正文任务
 
 正文任务有六种状态：

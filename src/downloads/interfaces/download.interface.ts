@@ -1,4 +1,5 @@
 ﻿import type { Readable } from "node:stream";
+import type { Platform } from "../../shared/types/platform.type";
 
 export type DownloadStatus =
   | "queued"
@@ -27,7 +28,7 @@ export interface DownloadErrorResource {
 
 export interface DownloadResource {
   id: string;
-  platform: "fanqie";
+  platform: Platform;
   externalBookId: string;
   format: "txt";
   range: DownloadRangeResource | null;

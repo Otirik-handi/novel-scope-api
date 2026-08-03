@@ -6,6 +6,6 @@ import { QidianModule } from "./qidian/qidian.module";
 @Module({
   imports: [QidianModule, FanqieModule],
   providers: [CrawlersService],
-  exports: [CrawlersService],
+  exports: [CrawlersService, QidianModule],
 })
 export class CrawlersModule {}

@@ -33,7 +33,7 @@ function stored(overrides: Record<string, unknown> = {}) {
 }
 
 describe("DownloadsRepository", () => {
-  it("atomically upserts the Fanqie book identity and creates a queued task", async () => {
+  it("atomically upserts the requested book identity and creates a queued task", async () => {
     const bookCreateMany = jest.fn().mockResolvedValue({ count: 1 });
     const bookFind = jest.fn().mockResolvedValue({ id: "book-1" });
     const downloadCreate = jest.fn().mockResolvedValue(stored());
@@ -47,20 +47,20 @@ describe("DownloadsRepository", () => {
     } as unknown as PrismaService);
 
     await expect(
-      repository.createQueued("7069948840148732967", {
+      repository.createQueued("qidian", "1043182343", {
         startChapter: 20,
         endChapter: 30,
       }),
     ).resolves.toEqual(stored());
     expect(bookCreateMany).toHaveBeenCalledWith({
-      data: [{ platform: "fanqie", externalBookId: "7069948840148732967" }],
+      data: [{ platform: "qidian", externalBookId: "1043182343" }],
       skipDuplicates: true,
     });
     expect(bookFind).toHaveBeenCalledWith({
       where: {
         platform_externalBookId: {
-          platform: "fanqie",
-          externalBookId: "7069948840148732967",
+          platform: "qidian",
+          externalBookId: "1043182343",
         },
       },
       select: { id: true },

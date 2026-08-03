@@ -4,8 +4,8 @@ import { join } from "node:path";
 import request from "supertest";
 import type { CrawlersService } from "../../src/crawlers/crawlers.service";
 import { DownloadsRepository } from "../../src/downloads/downloads.repository";
-import type { TomatoDownloaderClient } from "../../src/downloads/tomato-downloader/tomato-downloader.client";
-import type { DownloaderJob } from "../../src/downloads/tomato-downloader/tomato-downloader.contract";
+import type { TomatoDownloaderClient } from "../../src/downloads/runners/fanqie/tomato-downloader/tomato-downloader.client";
+import type { DownloaderJob } from "../../src/downloads/runners/fanqie/tomato-downloader/tomato-downloader.contract";
 import { createE2eApplication, type E2eApplication } from "../setup-env";
 
 const crawlersService: Pick<
@@ -167,12 +167,20 @@ describe("Downloads API (e2e)", () => {
   }
 
   it("claims persisted tasks in FIFO order through the real repository", async () => {
-    const first = await repository.createQueued("7069948840148732967", null);
+    const first = await repository.createQueued(
+      "fanqie",
+      "7069948840148732967",
+      null,
+    );
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const second = await repository.createQueued("7069948840148732968", {
-      startChapter: 2,
-      endChapter: 3,
-    });
+    const second = await repository.createQueued(
+      "fanqie",
+      "7069948840148732968",
+      {
+        startChapter: 2,
+        endChapter: 3,
+      },
+    );
 
     const claimed = await repository.claimNextQueued(new Date());
     expect(claimed?.id).toBe(first.id);

@@ -256,4 +256,38 @@ describe("TomatoDownloaderClient", () => {
     expect(JSON.stringify(error)).not.toContain("secret-password");
     expect((error as Error).message).not.toContain("secret-password");
   });
+
+  it("normalizes a downloader 404 to NOT_FOUND", async () => {
+    const adapter: AxiosAdapter = async (config) => {
+      throw new AxiosError(
+        "request failed",
+        "ERR_BAD_REQUEST",
+        config,
+        undefined,
+        response(config, { message: "not found" }, 404),
+      );
+    };
+
+    await expect(createClient(adapter).openArtifact("missing.txt")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: "Downloader artifact was not found",
+    });
+  });
+
+  it("normalizes a JSON request 404 to REJECTED", async () => {
+    const adapter: AxiosAdapter = async (config) => {
+      throw new AxiosError(
+        "request failed",
+        "ERR_BAD_REQUEST",
+        config,
+        undefined,
+        response(config, { message: "not found" }, 404),
+      );
+    };
+
+    await expect(createClient(adapter).getStatus()).rejects.toMatchObject({
+      code: "REJECTED",
+      message: "Downloader rejected the request",
+    });
+  });
 });

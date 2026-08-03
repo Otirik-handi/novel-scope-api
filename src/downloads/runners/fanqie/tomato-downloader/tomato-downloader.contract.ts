@@ -1,9 +1,8 @@
-﻿export const TOMATO_DOWNLOADER_SUPPORTED_VERSION = "2.4.13";
+import type { ChapterRange } from "../../book-download-runner.interface";
 
-export interface ChapterRange {
-  startChapter: number;
-  endChapter: number;
-}
+export const TOMATO_DOWNLOADER_SUPPORTED_VERSION = "2.4.13";
+
+export type { ChapterRange };
 
 export interface DownloaderStatus {
   version: string;
